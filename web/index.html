@@ -1,0 +1,1049 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TREES-LLM 树木参数分析平台</title>
+    <style>
+        :root {
+            --primary: #2d7d46;
+            --primary-dark: #1a5230;
+            --secondary: #4a9960;
+            --bg: #f5f7f4;
+            --surface: #ffffff;
+            --text: #2c3e2c;
+            --text-muted: #6b7c6b;
+            --border: #d4e6d4;
+            --danger: #c0392b;
+            --success: #27ae60;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary-dark), var(--primary));
+            color: white;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        header h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.5px; }
+        header .subtitle { font-size: 0.85rem; opacity: 0.8; }
+
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Left panel */
+        .left-panel {
+            width: 340px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .panel-section {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .panel-section h3 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 10px;
+            padding: 28px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--bg);
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--primary);
+            background: #eef5ee;
+        }
+
+        .upload-icon { font-size: 2.2rem; margin-bottom: 8px; }
+        .upload-area p { font-size: 0.85rem; color: var(--text-muted); }
+        .upload-area .hint { font-size: 0.75rem; margin-top: 6px; color: var(--text-muted); }
+
+        #fileInput { display: none; }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-primary:disabled { background: #aabbaa; cursor: not-allowed; }
+        .btn-secondary { background: var(--border); color: var(--text); }
+
+        .btn-row { display: flex; gap: 8px; margin-top: 8px; }
+
+        /* Tree list */
+        .tree-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .tree-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tree-card:hover, .tree-card.selected {
+            border-color: var(--primary);
+            background: #eef5ee;
+        }
+
+        .tree-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .tree-card-id { font-weight: 600; color: var(--primary-dark); }
+        .tree-card-points { font-size: 0.75rem; color: var(--text-muted); }
+
+        .tree-card-params {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            font-size: 0.82rem;
+        }
+
+        .param-item { display: flex; justify-content: space-between; }
+        .param-label { color: var(--text-muted); }
+        .param-value { font-weight: 600; }
+
+        /* Center: 3D Viewer */
+        .viewer-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #0a1210;
+            position: relative;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+        }
+
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .viewer-toolbar {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .toolbar-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(255,255,255,0.9);
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .toolbar-btn:hover { background: white; }
+
+        .viewer-hint {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(0,0,0,0.6);
+            color: rgba(255,255,255,0.8);
+            font-size: 0.75rem;
+            padding: 6px 10px;
+            border-radius: 6px;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            z-index: 10;
+        }
+
+        .loading-overlay.hidden { display: none; }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Right panel: Chat */
+        .right-panel {
+            width: 360px;
+            background: var(--surface);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .ai-badge {
+            background: var(--primary);
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .msg {
+            max-width: 90%;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+
+        .msg.user {
+            align-self: flex-end;
+            background: var(--primary);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .msg.assistant {
+            align-self: flex-start;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg.assistant .msg-label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .msg.error {
+            background: #fdecea;
+            border-color: var(--danger);
+            color: var(--danger);
+            font-size: 0.82rem;
+        }
+
+        .chat-input-area {
+            padding: 12px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 8px;
+        }
+
+        #chatInput {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.88rem;
+            outline: none;
+            resize: none;
+            font-family: inherit;
+        }
+
+        #chatInput:focus { border-color: var(--primary); }
+
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            background: var(--primary);
+            color: white;
+            cursor: pointer;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .send-btn:hover { background: var(--primary-dark); }
+        .send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+        /* API config */
+        .api-status {
+            padding: 10px 16px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--danger);
+        }
+
+        .status-dot.connected { background: var(--success); }
+
+        /* Stats summary bar */
+        .stats-bar {
+            padding: 10px 16px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 16px;
+            font-size: 0.8rem;
+        }
+
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-label { color: var(--text-muted); font-size: 0.72rem; }
+        .stat-value { font-weight: 700; color: var(--primary-dark); }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>TREES-LLM 树木智能分析平台</h1>
+            <div class="subtitle">LiDAR点云 · 参数提取 · GLM智能问答</div>
+        </div>
+        <div style="font-size:0.8rem; opacity:0.7;">多模态森林感知系统 v0.1</div>
+    </header>
+
+    <div class="main-container">
+        <!-- Left Panel: Upload + Tree List -->
+        <div class="left-panel">
+            <div class="panel-section">
+                <h3>点云上传</h3>
+                <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                    <div class="upload-icon">🌲</div>
+                    <p>点击或拖拽上传点云文件</p>
+                    <div class="hint">支持 .ply .las .laz .npy 格式</div>
+                </div>
+                <input type="file" id="fileInput" accept=".ply,.las,.laz,.npy">
+                <div class="btn-row">
+                    <button class="btn btn-primary" id="processBtn" onclick="processPointCloud()" disabled>分析点云</button>
+                    <button class="btn btn-secondary" id="encodeBtn" onclick="encodePointCloud()" disabled>3D编码</button>
+                </div>
+            </div>
+
+            <div class="stats-bar" id="statsBar" style="display:none;">
+                <div class="stat-item"><span class="stat-label">总点数</span><span class="stat-value" id="statPoints">-</span></div>
+                <div class="stat-item"><span class="stat-label">树木数</span><span class="stat-value" id="statTrees">-</span></div>
+                <div class="stat-item"><span class="stat-label">碳储量</span><span class="stat-value" id="statCarbon">-</span></div>
+            </div>
+
+            <div class="panel-section">
+                <h3>检测到的树木</h3>
+            </div>
+            <div class="tree-list" id="treeList">
+                <div style="text-align:center; padding:32px 16px; color:var(--text-muted); font-size:0.85rem;">
+                    上传点云后自动分割检测
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: 3D Viewer -->
+        <div class="viewer-container">
+            <div id="canvas-container">
+                <canvas id="threeCanvas"></canvas>
+                <div class="viewer-toolbar">
+                    <button class="toolbar-btn" onclick="resetCamera()" title="重置视角">🎯</button>
+                    <button class="toolbar-btn" onclick="toggleWireframe()" title="线框模式">⬡</button>
+                    <button class="toolbar-btn" onclick="downloadPointCloud()" title="下载点云">⬇</button>
+                </div>
+                <div class="viewer-hint" id="viewerHint">拖拽旋转 · 滚轮缩放 · 右键平移</div>
+                <div class="loading-overlay" id="loadingOverlay">
+                    <div class="spinner"></div>
+                    <span id="loadingText">正在处理点云...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Chat -->
+        <div class="right-panel">
+            <div class="chat-header">
+                🌿 GLM-4 智能问答
+                <span class="ai-badge">GLM-4-Flash</span>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="msg assistant">
+                    <div class="msg-label">GLM-4 林业专家</div>
+                    您好！我是您的智能树木分析助手。上传点云并分析后，我可以帮您分析树木健康状况、估算碳储量、解读生长特征。
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <textarea id="chatInput" rows="1" placeholder="询问关于树木的问题..." onkeydown="handleChatKey(event)"></textarea>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+            </div>
+            <div class="api-status">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">等待上传点云</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js via importmap (ES modules) -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ===================== STATE =====================
+        let scene, camera, renderer, controls, pointCloudMesh;
+        let treeData = null;   // { trees: [...], params: [...] }
+        let selectedTreeId = null;
+        let isProcessing = false;
+
+        // GLM API endpoint
+        const API_BASE = 'http://localhost:8000';
+
+        // ===================== THREE.JS SETUP =====================
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a1210);
+
+            camera = new THREE.PerspectiveCamera(60, w / h, 0.1, 1000);
+            camera.position.set(5, 5, 8);
+
+            renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('threeCanvas'), antialias: true });
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.target.set(0, 1, 0);
+
+            // Lighting
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(5, 10, 5);
+            scene.add(dirLight);
+
+            // Grid
+            const grid = new THREE.GridHelper(20, 20, 0x1a4a2a, 0x0d2a15);
+            scene.add(grid);
+
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onResize() {
+            const container = document.getElementById('canvas-container');
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+
+        window.addEventListener('resize', onResize);
+
+        function resetCamera() {
+            camera.position.set(5, 5, 8);
+            controls.target.set(0, 1, 0);
+            controls.update();
+        }
+
+        function toggleWireframe() {
+            // Placeholder
+        }
+
+        function downloadPointCloud() {
+            // Placeholder
+        }
+
+        // ===================== FILE UPLOAD =====================
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                onFileSelected(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                onFileSelected(e.target.files[0]);
+            }
+        });
+
+        function onFileSelected(file) {
+            document.getElementById('processBtn').disabled = false;
+            document.getElementById('statusText').textContent = `已选择: ${file.name}`;
+            document.getElementById('statusDot').classList.add('connected');
+        }
+
+        // ===================== POINT CLOUD PROCESSING =====================
+        async function processPointCloud() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            if (isProcessing) return;
+            isProcessing = true;
+            showLoading('正在解析点云...');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${API_BASE}/extract`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                hideLoading();
+
+                if (result.success) {
+                    treeData = result;
+                    renderPointCloud(file);
+                    renderTreeList([result]);
+                    updateStatsBar([result]);
+                    updateStatus(`检测到 1 棵树 (ID: ${result.tree_id})`, true);
+                    addMessage('assistant', `点云分析完成！检测到 1 棵树。\n\n📊 参数摘要：\n• 树高: ${result.params.height} m\n• 胸径(DBH): ${result.params.dbh} cm\n• 冠幅: ${result.params.crown_width} m\n• 碳储量: ${result.params.carbon_stock} kg\n\n点击左侧树木卡片可查看详情，或在下方问我关于这棵树的问题。`);
+                } else {
+                    throw new Error(result.error || '处理失败');
+                }
+            } catch (err) {
+                hideLoading();
+                console.error(err);
+                updateStatus(`错误: ${err.message}`, false);
+                addMessage('assistant', `⚠️ 处理失败: ${err.message}\n\n请确保后端服务正在运行：\npython src/api/main.py`, true);
+
+                // Fallback: try to render the file directly
+                addMessage('assistant', '💡 提示: 如果后端未启动，可以直接加载 .ply 文件进行本地预览（无需后端）。', true);
+            }
+
+            isProcessing = false;
+        }
+
+        // 3DCity-LLM style encoding
+        let encodeData = null;
+
+        async function encodePointCloud() {
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            if (isProcessing) return;
+            isProcessing = true;
+            showLoading('3D Token编码中...');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const response = await fetch(`${API_BASE}/encode`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+
+                const result = await response.json();
+                hideLoading();
+
+                if (result.success) {
+                    encodeData = result;
+                    const nVoxels = result.geometry?.n_points || result.n_input_points || '-';
+                    document.getElementById('statPoints').textContent = nVoxels;
+                    updateStatus(`3D编码完成: ${nVoxels}点`, true);
+                    const layers = result.layers || {};
+                    const desc = result.description || '';
+                    addMessage('assistant', `3D Token编码完成！\n\n• 输入: ${result.n_input_points || '-'} 点\n• 编码点: ${result.geometry?.n_points || '-'}\n\n${desc}\n\n现在在下方问我问题，GLM会基于3D几何token来回答。`);
+                } else {
+                    throw new Error('编码失败');
+                }
+            } catch (err) {
+                hideLoading();
+                console.error(err);
+                updateStatus(`编码错误: ${err.message}`, false);
+                addMessage('assistant', `⚠️ 3D编码失败: ${err.message}`, true);
+            }
+
+            isProcessing = false;
+        }
+
+        // Override sendMessage to use encode-chat when available
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text || isProcessing) return;
+
+            input.value = '';
+            addMessage('user', text);
+
+            const file = fileInput.files[0];
+            if (!file) {
+                addMessage('assistant', '⚠️ 请先上传点云文件。', true);
+                return;
+            }
+
+            // Use encode-chat-upload for richer 3D understanding
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('question', text);
+
+                const response = await fetch(`${API_BASE}/encode-chat-upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) throw new Error('API unavailable');
+
+                const result = await response.json();
+                addMessage('assistant', result.answer || '（无回复）');
+            } catch {
+                // Fallback to /chat with params
+                if (treeData) {
+                    try {
+                        const response = await fetch(`${API_BASE}/chat`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ question: text, params: treeData.params }),
+                        });
+                        if (response.ok) {
+                            const result = await response.json();
+                            addMessage('assistant', result.answer || '（无回复）');
+                            return;
+                        }
+                    } catch {}
+                }
+                addMessage('assistant', '⚠️ 请先启动后端服务，或先点击"分析点云"获取参数。', true);
+            }
+        }
+
+        function renderPointCloud(file) {
+            // Remove existing point cloud
+            if (pointCloudMesh) {
+                scene.remove(pointCloudMesh);
+                pointCloudMesh.geometry.dispose();
+                pointCloudMesh.material.dispose();
+                pointCloudMesh = null;
+            }
+
+            // Remove existing tree meshes
+            scene.children
+                .filter(c => c.userData && c.userData.isTreeMesh)
+                .forEach(m => {
+                    scene.remove(m);
+                    m.geometry.dispose();
+                    m.material.dispose();
+                });
+
+            showLoading('正在渲染点云...');
+
+            // Read file as ArrayBuffer and parse PLY
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const buffer = e.target.result;
+                const points = parsePlyBuffer(buffer);
+
+                if (!points || points.length === 0) {
+                    hideLoading();
+                    updateStatus('点云解析失败', false);
+                    return;
+                }
+
+                // Create Three.js Points
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+
+                // Color by height
+                const colors = new Float32Array(points.length);
+                const minZ = points.filter((_, i) => i % 3 === 2).reduce((a, b) => Math.min(a, b), Infinity);
+                const maxZ = points.filter((_, i) => i % 3 === 2).reduce((a, b) => Math.max(a, b), -Infinity);
+                const rangeZ = maxZ - minZ || 1;
+
+                const posAttr = geometry.getAttribute('position');
+                for (let i = 0; i < posAttr.count; i++) {
+                    const z = posAttr.getZ(i);
+                    const t = (z - minZ) / rangeZ;
+                    // Green gradient: dark at bottom, bright at top
+                    colors[i * 3] = 0.1 + t * 0.3;
+                    colors[i * 3 + 1] = 0.4 + t * 0.5;
+                    colors[i * 3 + 2] = 0.1 + t * 0.2;
+                }
+                geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                const material = new THREE.PointsMaterial({
+                    size: 0.015,
+                    vertexColors: true,
+                    sizeAttenuation: true,
+                });
+
+                pointCloudMesh = new THREE.Points(geometry, material);
+                scene.add(pointCloudMesh);
+
+                // Fit camera
+                const positions = geometry.getAttribute('position');
+                const center = new THREE.Vector3();
+                let maxDist = 0;
+                for (let i = 0; i < positions.count; i++) {
+                    center.x += positions.getX(i);
+                    center.y += positions.getY(i);
+                    center.z += positions.getZ(i);
+                }
+                center.divideScalar(positions.count);
+                for (let i = 0; i < positions.count; i++) {
+                    const dx = positions.getX(i) - center.x;
+                    const dy = positions.getY(i) - center.y;
+                    const dz = positions.getZ(i) - center.z;
+                    maxDist = Math.max(maxDist, Math.sqrt(dx*dx + dy*dy + dz*dz));
+                }
+
+                camera.position.copy(center).add(new THREE.Vector3(maxDist * 1.5, maxDist * 0.8, maxDist * 1.5));
+                controls.target.copy(center);
+                controls.update();
+
+                hideLoading();
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function parsePlyBuffer(buffer) {
+            const text = new TextDecoder().decode(buffer);
+            const lines = text.split('\n');
+
+            let elementCount = 0;
+            let format = '';
+            const props = [];
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('element vertex')) {
+                    elementCount = parseInt(trimmed.split(/\s+/)[2]);
+                }
+                if (trimmed.startsWith('format')) {
+                    format = trimmed;
+                }
+                if (trimmed.startsWith('property')) {
+                    const parts = trimmed.split(/\s+/);
+                    // property float x -> ['property', 'float', 'x']
+                    // property uchar red -> ['property', 'uchar', 'red']
+                    props.push({ type: parts[1], name: parts[2] });
+                }
+                if (trimmed === 'end_header') break;
+            }
+
+            const xIdx = props.findIndex(p => p.name === 'x');
+            const yIdx = props.findIndex(p => p.name === 'y');
+            const zIdx = props.findIndex(p => p.name === 'z');
+
+            if (elementCount === 0 || xIdx < 0 || yIdx < 0 || zIdx < 0) {
+                return null;
+            }
+
+            if (format.includes('ascii')) {
+                return parseAsciiPly(text, elementCount, xIdx, yIdx, zIdx);
+            } else {
+                // binary_little_endian or binary_big_endian
+                return parseBinaryPly(buffer, elementCount, props, xIdx, yIdx, zIdx);
+            }
+        }
+
+        function parseAsciiPly(text, elementCount, xIdx, yIdx, zIdx) {
+            const endHeaderIdx = text.indexOf('end_header');
+            if (endHeaderIdx < 0) return null;
+            const dataStart = text.indexOf('\n', endHeaderIdx) + 1;
+            const dataStr = text.slice(dataStart).trim();
+
+            const dataLines = dataStr.split('\n');
+            const maxPts = Math.min(dataLines.length, elementCount, 200000);
+            const points = [];
+
+            for (let i = 0; i < maxPts; i++) {
+                const parts = dataLines[i].trim().split(/\s+/);
+                if (parts.length >= 3) {
+                    const x = parseFloat(parts[xIdx]);
+                    const y = parseFloat(parts[yIdx]);
+                    const z = parseFloat(parts[zIdx]);
+                    if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+                        points.push(x, y, z);
+                    }
+                }
+            }
+            return new Float32Array(points);
+        }
+
+        function parseBinaryPly(buffer, elementCount, props, xIdx, yIdx, zIdx) {
+            // Find end_header in bytes
+            const bytes = new Uint8Array(buffer);
+            let headerEnd = -1;
+            for (let i = 0; i < bytes.length - 9; i++) {
+                if (bytes[i] === 101 && bytes[i+1] === 110 && bytes[i+2] === 100 && bytes[i+3] === 95) {
+                    const slice = String.fromCharCode.apply(null, bytes.slice(i, i+10));
+                    if (slice.startsWith('end_header')) {
+                        headerEnd = i + 10;
+                        while (headerEnd < bytes.length && (bytes[headerEnd] === 10 || bytes[headerEnd] === 13)) {
+                            headerEnd++;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (headerEnd < 0 || headerEnd >= buffer.byteLength) return null;
+
+            // Compute stride from property types
+            const typeSize = { 'float': 4, 'double': 8, 'int': 4, 'uint': 4, 'short': 2, 'ushort': 2, 'char': 1, 'uchar': 1 };
+            let stride = 0;
+            const offsets = [];
+            for (const p of props) {
+                offsets.push(stride);
+                stride += typeSize[p.type] || 4;
+            }
+
+            const view = new DataView(buffer, headerEnd);
+            const points = [];
+            const count = Math.min(elementCount, 200000);
+
+            for (let i = 0; i < count; i++) {
+                const base = i * stride;
+                try {
+                    const x = view.getFloat32(base + offsets[xIdx], true);
+                    const y = view.getFloat32(base + offsets[yIdx], true);
+                    const z = view.getFloat32(base + offsets[zIdx], true);
+                    if (isFinite(x) && isFinite(y) && isFinite(z)) {
+                        points.push(x, y, z);
+                    }
+                } catch {
+                    break;
+                }
+            }
+            return new Float32Array(points);
+        }
+
+        // ===================== TREE LIST =====================
+        function renderTreeList(trees) {
+            const container = document.getElementById('treeList');
+            if (trees.length === 0) {
+                container.innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--text-muted)">未检测到树木</div>';
+                return;
+            }
+
+            container.innerHTML = trees.map(t => `
+                <div class="tree-card ${selectedTreeId === t.tree_id ? 'selected' : ''}" onclick="selectTree('${t.tree_id}')">
+                    <div class="tree-card-header">
+                        <span class="tree-card-id">🌲 ${t.tree_id}</span>
+                        <span class="tree-card-points">${t.params?.n_points || t.params?.point_count || '?'} 点</span>
+                    </div>
+                    <div class="tree-card-params">
+                        <div class="param-item"><span class="param-label">树高</span><span class="param-value">${t.params?.height ?? '-'} m</span></div>
+                        <div class="param-item"><span class="param-label">胸径</span><span class="param-value">${t.params?.dbh ?? '-'} cm</span></div>
+                        <div class="param-item"><span class="param-label">冠幅</span><span class="param-value">${t.params?.crown_width ?? '-'} m</span></div>
+                        <div class="param-item"><span class="param-label">碳储量</span><span class="param-value">${t.params?.carbon_stock ?? '-'} kg</span></div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectTree(treeId) {
+            selectedTreeId = treeId;
+            document.querySelectorAll('.tree-card').forEach(card => {
+                card.classList.toggle('selected', card.querySelector('.tree-card-id').textContent.includes(treeId));
+            });
+            document.getElementById('chatInput').focus();
+        }
+
+        function updateStatsBar(trees) {
+            const bar = document.getElementById('statsBar');
+            bar.style.display = 'flex';
+            const totalPoints = trees.reduce((s, t) => s + (t.params?.n_points || 0), 0);
+            const totalCarbon = trees.reduce((s, t) => s + (t.params?.carbon_stock || 0), 0);
+            document.getElementById('statPoints').textContent = totalPoints > 0 ? totalPoints.toLocaleString() : '-';
+            document.getElementById('statTrees').textContent = trees.length;
+            document.getElementById('statCarbon').textContent = totalCarbon > 0 ? totalCarbon.toFixed(1) + ' kg' : '-';
+        }
+
+        // ===================== CHAT =====================
+        function addMessage(role, content, isError = false) {
+            const container = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = `msg ${role}${isError ? ' error' : ''}`;
+            if (role === 'assistant') {
+                div.innerHTML = `<div class="msg-label">GLM-4 林业专家</div>${content.replace(/\n/g, '<br>')}`;
+            } else {
+                div.textContent = content;
+            }
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function handleChatKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // ===================== UTILS =====================
+        function showLoading(text) {
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            document.getElementById('loadingText').textContent = text || '处理中...';
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        function updateStatus(text, connected) {
+            document.getElementById('statusText').textContent = text;
+            const dot = document.getElementById('statusDot');
+            if (connected) dot.classList.add('connected');
+            else dot.classList.remove('connected');
+        }
+
+        function clearAll() {
+            if (pointCloudMesh) {
+                scene.remove(pointCloudMesh);
+                pointCloudMesh.geometry.dispose();
+                pointCloudMesh.material.dispose();
+                pointCloudMesh = null;
+            }
+            scene.children.filter(c => c.userData?.isTreeMesh).forEach(m => { scene.remove(m); m.geometry.dispose(); });
+            treeData = null;
+            selectedTreeId = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('processBtn').disabled = true;
+            document.getElementById('statsBar').style.display = 'none';
+            document.getElementById('treeList').innerHTML = '<div style="text-align:center;padding:32px 16px;color:var(--text-muted);font-size:0.85rem;">上传点云后自动分割检测</div>';
+            updateStatus('等待上传点云', false);
+            resetCamera();
+        }
+
+        // ===================== INIT =====================
+        document.addEventListener('DOMContentLoaded', initThree);
+
+        // Expose functions to global scope for inline onclick handlers
+        window.processPointCloud = processPointCloud;
+        window.sendMessage = sendMessage;
+        window.clearAll = clearAll;
+        window.selectTree = selectTree;
+        window.resetCamera = resetCamera;
+        window.toggleWireframe = toggleWireframe;
+        window.downloadPointCloud = downloadPointCloud;
+        window.handleChatKey = handleChatKey;
+    </script>
+</body>
+</html>

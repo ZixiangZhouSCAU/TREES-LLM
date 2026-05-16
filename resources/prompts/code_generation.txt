@@ -1,0 +1,89 @@
+【代码生成规范 - 点云处理/深度学习模块】
+
+你是一名点云处理专家。请按以下规范生成代码。
+
+## 技术栈
+- Python 3.10+
+- 点云库：open3d, laspy, pyntcloud
+- 深度学习：PyTorch 2.0+, torch-geometric
+- 环境：conda environment.yml
+
+## 命名规范
+- 脚本：snake_case.py（如 preprocess_mls_data.py）
+- 模型：model_${task}.py（如 model_pointnet2_segmentation.py）
+- 评估：eval_${model}.py
+- 配置：${experiment_name}.yaml
+
+## 代码模板
+
+### 模型文件模板
+```python
+"""
+model_${task}.py
+描述：[模型功能]
+日期：2026-05-01
+"""
+
+import torch
+import torch.nn as nn
+from typing import Optional, Dict, Any
+
+
+class ModelName(nn.Module):
+    """模型描述"""
+
+    def __init__(self, cfg: Dict[str, Any]):
+        super().__init__()
+        # 初始化层
+        pass
+
+    def forward(self, xyz: torch.Tensor, features: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+        """
+        Args:
+            xyz: (B, N, 3) 点坐标
+            features: (B, N, C) 点特征
+        Returns:
+            dict with 'logits' and optional intermediate outputs
+        """
+        # 前向传播
+        return {"logits": logits, "features": features}
+
+
+def test_model():
+    """单元测试"""
+    import torch
+    model = ModelName({"num_classes": 4})
+    xyz = torch.randn(2, 4096, 3)
+    out = model(xyz)
+    assert out["logits"].shape == (2, 4096, 4)
+    print("Model test passed.")
+
+
+if __name__ == "__main__":
+    test_model()
+```
+
+### 数据处理脚本模板
+```python
+"""
+preprocess_${dataset}.py
+描述：[数据集]的预处理流程
+步骤：
+  1. 读取原始 .las 文件
+  2. 地面点去除（CSF/SMRF）
+  3. 噪声去除（统计离群点移除）
+  4. 下采样（体素化）
+  5. 保存为 .ply 格式
+"""
+
+import open3d as o3d
+from pathlib import Path
+from tqdm import tqdm
+```
+
+## 代码要求
+- 所有模型实现包含 test_model() 函数用于单元测试
+- 所有预处理脚本可独立运行，并输出处理日志
+- 使用 dataclasses 或 TypedDict 进行类型提示
+- 包含合理的 assert 检查
+- 模块化设计，便于修改

@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.whl
+
+# Virtual environments
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# PyTorch / model weights
+*.pt
+*.pth
+*.ckpt
+*.pkl
+checkpoints/
+
+# Data (large files)
+*.ply
+*.las
+*.laz
+*.pcd
+*.npy
+data/raw/
+data/processed/
+
+# Web
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Debug / test
+web_debug.py
+test_*.py
+temp_*

@@ -1,0 +1,46 @@
+【报告生成提示词模板 - 基于 experiment_plan_with_llm.md】
+
+你正在生成树木参数提取的实验报告。
+
+## 报告格式
+
+```json
+{
+  "report_type": "single_tree_report | batch_report",
+  "tree_id": "string",
+  "parameters": {
+    "dbh": {"value": float, "unit": "cm", "confidence": float},
+    "height": {"value": float, "unit": "m", "confidence": float},
+    "crown_width": {"value": float, "unit": "m", "confidence": float},
+    "crown_volume": {"value": float, "unit": "m3", "confidence": float}
+  },
+  "uncertainty_analysis": {
+    "method": "Bayesian",
+    "confidence_level": 0.95,
+    "observations": ["string"]
+  },
+  "quality_assessment": {
+    "data_completeness": float,
+    "occlusion_level": "low | medium | high",
+    "recommendations": ["string"]
+  }
+}
+```
+
+## 自然语言输出要求
+
+请基于上述结构化数据生成一段专业的自然语言报告，包含：
+1. 树木基本信息概述
+2. 各参数的估计值和置信区间
+3. 数据质量评估
+4. 不确定性来源分析
+5. 建议与注意事项
+
+## 交互式问答
+
+用户可能会问：
+- "为什么这个 DBH 估计的不确定性这么大？"
+- "这个树冠体积的计算是否可靠？"
+- "哪些因素可能导致结果偏差？"
+
+请准备好对这些问题的专业回答。

@@ -1,0 +1,69 @@
+name: trees-llm
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  # PyTorch CUDA 12.1
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1
+  # Core scientific
+  - numpy<2
+  - scipy
+  - scikit-learn
+  - pandas
+  - matplotlib
+  - seaborn
+  - tqdm
+  - pyyaml
+  # Utilities
+  - loguru
+  - rich
+  # Point cloud
+  - open3d
+  - laspy
+  # Web / API
+  - fastapi
+  - uvicorn
+  - pydantic
+  - python-multipart
+  - sqlalchemy
+  # Jupyter
+  - jupyterlab
+  - ipywidgets
+  - nbformat
+  # Experiment tracking
+  - wandb
+  - tensorboard
+  # LLM fine-tuning
+  - accelerate
+  - peft
+  - transformers<4.46
+  - tokenizers<0.21
+  - huggingface-hub<1.0
+  # Pure-Python packages (conda-forge)
+  - pyntcloud
+  - asyncpg
+  - python-jose
+  - minio
+
+# ============================================================
+# POST-CREATION STEPS (run after: conda env create -f environment.yml)
+# ============================================================
+#
+# Problem: mixing conda pytorch with pip upgrades breaks CUDA torch.
+# Solution: after any pip install that pulls a new torch, re-lock torch:
+#
+#   pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2 \
+#     --index-url https://download.pytorch.org/whl/cu121 --force-reinstall --no-deps
+#   pip install open3d --force-reinstall --no-deps
+#   pip install "numpy<2" --no-deps
+#
+# Install bitsandbytes (requires torch>=2.3; re-lock torch afterwards):
+#   pip install bitsandbytes
+#   # then re-run the torch re-lock command above

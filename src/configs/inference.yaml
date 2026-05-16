@@ -1,0 +1,28 @@
+# TREES-LLM 快速推理配置
+
+model:
+  # tokenizer路径（训练好后指定）
+  tokenizer_path: "./outputs/baseline/tokenizer_best.pt"
+  # LLM基座
+  base_model: "meta-llama/Meta-Llama-3-8B-Instruct"
+  # 投影层路径
+  projection_path: "./outputs/baseline/projection_best.pt"
+
+# 输入配置
+input:
+  num_points: 4096
+  normalize: true
+  use_rgb: false
+
+# 推理配置
+inference:
+  max_new_tokens: 256
+  temperature: 0.7
+  top_p: 0.9
+  do_sample: true
+
+# LLM API配置（可选）
+llm_api:
+  provider: "claude"   # "claude" | "openai" | "local"
+  model: "claude-3-5-sonnet"
+  api_key: "${CLAUDE_API_KEY}"
