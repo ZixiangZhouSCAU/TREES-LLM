@@ -27,25 +27,40 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Responsive breakpoints */
+        @media (max-width: 1200px) {
+            .left-panel { width: 280px; }
+            .right-panel { width: 300px; }
+        }
+        @media (max-width: 900px) {
+            .main-container { flex-direction: column; overflow-y: auto; }
+            .left-panel { width: 100%; max-height: 300px; border-right: none; border-bottom: 1px solid var(--border); }
+            .viewer-container { height: 400px; flex: none; }
+            .right-panel { width: 100%; height: 350px; border-left: none; border-top: 1px solid var(--border); }
         }
 
         header {
             background: linear-gradient(135deg, var(--primary-dark), var(--primary));
             color: white;
-            padding: 16px 32px;
+            padding: 14px 24px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            flex-shrink: 0;
         }
 
-        header h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: -0.5px; }
-        header .subtitle { font-size: 0.85rem; opacity: 0.8; }
+        header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.5px; }
+        header .subtitle { font-size: 0.8rem; opacity: 0.8; }
 
         .main-container {
             display: flex;
             flex: 1;
             overflow: hidden;
+            min-height: 0;
         }
 
         /* Left panel */
@@ -86,7 +101,7 @@
             background: #eef5ee;
         }
 
-        .upload-icon { font-size: 2.2rem; margin-bottom: 8px; }
+        .upload-icon { width: 48px; height: 48px; margin: 0 auto 8px; display: flex; align-items: center; justify-content: center; }
         .upload-area p { font-size: 0.85rem; color: var(--text-muted); }
         .upload-area .hint { font-size: 0.75rem; margin-top: 6px; color: var(--text-muted); }
 
@@ -233,6 +248,27 @@
             margin-bottom: 12px;
         }
 
+        .progress-bar-container {
+            width: 220px;
+            height: 6px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-pct {
+            margin-top: 6px;
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.7);
+        }
+
         @keyframes spin { to { transform: rotate(360deg); } }
 
         /* Right panel: Chat */
@@ -253,6 +289,11 @@
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+
+        .ai-label {
+            color: var(--primary-dark);
+            font-weight: 600;
         }
 
         .ai-badge {
@@ -395,7 +436,12 @@
             <div class="panel-section">
                 <h3>点云上传</h3>
                 <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-                    <div class="upload-icon">🌲</div>
+                    <div class="upload-icon">
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="24" cy="24" r="22" stroke="#4a9960" stroke-width="2" stroke-dasharray="4 2"/>
+                            <path d="M24 12 L24 30 M18 24 L24 30 L30 24" stroke="#4a9960" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
                     <p>点击或拖拽上传点云文件</p>
                     <div class="hint">支持 .ply .las .laz .npy 格式</div>
                 </div>
@@ -427,14 +473,24 @@
             <div id="canvas-container">
                 <canvas id="threeCanvas"></canvas>
                 <div class="viewer-toolbar">
-                    <button class="toolbar-btn" onclick="resetCamera()" title="重置视角">🎯</button>
-                    <button class="toolbar-btn" onclick="toggleWireframe()" title="线框模式">⬡</button>
-                    <button class="toolbar-btn" onclick="downloadPointCloud()" title="下载点云">⬇</button>
+                    <button class="toolbar-btn" onclick="resetCamera()" title="重置视角">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+                    </button>
+                    <button class="toolbar-btn" onclick="toggleWireframe()" title="线框模式">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polygon points="8,2 14,5 14,11 8,14 2,11 2,5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+                    </button>
+                    <button class="toolbar-btn" onclick="downloadPointCloud()" title="下载点云">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3 L8 11 M5 8 L8 11 L11 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    </button>
                 </div>
                 <div class="viewer-hint" id="viewerHint">拖拽旋转 · 滚轮缩放 · 右键平移</div>
-                <div class="loading-overlay" id="loadingOverlay">
+                <div class="loading-overlay hidden" id="loadingOverlay">
                     <div class="spinner"></div>
                     <span id="loadingText">正在处理点云...</span>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-fill" id="progressFill"></div>
+                    </div>
+                    <span class="progress-pct" id="progressPct"></span>
                 </div>
             </div>
         </div>
@@ -442,7 +498,7 @@
         <!-- Right Panel: Chat -->
         <div class="right-panel">
             <div class="chat-header">
-                🌿 GLM-4 智能问答
+                <span class="ai-label">GLM-4 智能问答</span>
                 <span class="ai-badge">GLM-4-Flash</span>
             </div>
             <div class="chat-messages" id="chatMessages">
@@ -453,7 +509,11 @@
             </div>
             <div class="chat-input-area">
                 <textarea id="chatInput" rows="1" placeholder="询问关于树木的问题..." onkeydown="handleChatKey(event)"></textarea>
-                <button class="send-btn" id="sendBtn" onclick="sendMessage()">➤</button>
+                <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M3 8 L13 8 M10 5 L13 8 L10 11" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
             <div class="api-status">
                 <span class="status-dot" id="statusDot"></span>
@@ -592,6 +652,7 @@
             if (isProcessing) return;
             isProcessing = true;
             showLoading('正在解析点云...');
+            setProgress(10, '上传点云文件...');
 
             try {
                 const formData = new FormData();
@@ -616,7 +677,7 @@
                     renderTreeList([result]);
                     updateStatsBar([result]);
                     updateStatus(`检测到 1 棵树 (ID: ${result.tree_id})`, true);
-                    addMessage('assistant', `点云分析完成！检测到 1 棵树。\n\n📊 参数摘要：\n• 树高: ${result.params.height} m\n• 胸径(DBH): ${result.params.dbh} cm\n• 冠幅: ${result.params.crown_width} m\n• 碳储量: ${result.params.carbon_stock} kg\n\n点击左侧树木卡片可查看详情，或在下方问我关于这棵树的问题。`);
+                    addMessage('assistant', `点云分析完成！检测到 1 棵树。\n\n参数摘要：\n- 树高: ${result.params.height} m\n- 胸径(DBH): ${result.params.dbh} cm\n- 冠幅: ${result.params.crown_width} m\n- 碳储量: ${result.params.carbon_stock} kg\n\n点击左侧树木卡片可查看详情，或在下方问我关于这棵树的问题。`);
                 } else {
                     throw new Error(result.error || '处理失败');
                 }
@@ -624,10 +685,10 @@
                 hideLoading();
                 console.error(err);
                 updateStatus(`错误: ${err.message}`, false);
-                addMessage('assistant', `⚠️ 处理失败: ${err.message}\n\n请确保后端服务正在运行：\npython src/api/main.py`, true);
+                addMessage('assistant', `处理失败: ${err.message}\n\n请确保后端服务正在运行：\npython src/api/main.py`, true);
 
                 // Fallback: try to render the file directly
-                addMessage('assistant', '💡 提示: 如果后端未启动，可以直接加载 .ply 文件进行本地预览（无需后端）。', true);
+                addMessage('assistant', '提示: 如果后端未启动，可以直接加载 .ply 文件进行本地预览（无需后端）。', true);
             }
 
             isProcessing = false;
@@ -676,7 +737,7 @@
                 hideLoading();
                 console.error(err);
                 updateStatus(`编码错误: ${err.message}`, false);
-                addMessage('assistant', `⚠️ 3D编码失败: ${err.message}`, true);
+                addMessage('assistant', `3D编码失败: ${err.message}`, true);
             }
 
             isProcessing = false;
@@ -693,7 +754,7 @@
 
             const file = fileInput.files[0];
             if (!file) {
-                addMessage('assistant', '⚠️ 请先上传点云文件。', true);
+                addMessage('assistant', '请先上传点云文件。', true);
                 return;
             }
 
@@ -728,7 +789,7 @@
                         }
                     } catch {}
                 }
-                addMessage('assistant', '⚠️ 请先启动后端服务，或先点击"分析点云"获取参数。', true);
+                addMessage('assistant', '请先启动后端服务，或先点击"分析点云"获取参数。', true);
             }
         }
 
@@ -756,6 +817,7 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 const buffer = e.target.result;
+                setProgress(30, '解析PLY文件中...');
                 const points = parsePlyBuffer(buffer);
 
                 if (!points || points.length === 0) {
@@ -764,9 +826,12 @@
                     return;
                 }
 
+                setProgress(60, `读取到 ${points.length/3} 个点...`);
                 // Create Three.js Points
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+
+                setProgress(70, '创建Three.js几何体...');
 
                 // Color by height
                 const colors = new Float32Array(points.length);
@@ -784,6 +849,8 @@
                     colors[i * 3 + 2] = 0.1 + t * 0.2;
                 }
                 geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+                setProgress(85, '渲染点云中...');
 
                 const material = new THREE.PointsMaterial({
                     size: 0.015,
@@ -945,7 +1012,7 @@
             container.innerHTML = trees.map(t => `
                 <div class="tree-card ${selectedTreeId === t.tree_id ? 'selected' : ''}" onclick="selectTree('${t.tree_id}')">
                     <div class="tree-card-header">
-                        <span class="tree-card-id">🌲 ${t.tree_id}</span>
+                        <span class="tree-card-id">${t.tree_id}</span>
                         <span class="tree-card-points">${t.params?.n_points || t.params?.point_count || '?'} 点</span>
                     </div>
                     <div class="tree-card-params">
@@ -1001,6 +1068,13 @@
         function showLoading(text) {
             document.getElementById('loadingOverlay').classList.remove('hidden');
             document.getElementById('loadingText').textContent = text || '处理中...';
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressPct').textContent = '';
+        }
+
+        function setProgress(pct, subtext) {
+            document.getElementById('progressFill').style.width = pct + '%';
+            document.getElementById('progressPct').textContent = subtext || Math.round(pct) + '%';
         }
 
         function hideLoading() {

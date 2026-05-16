@@ -28,6 +28,8 @@ class PointLLMConfig:
     num_queries: int = 256
     commitment_cost: float = 0.25
     input_dim: int = 3
+    # Path to ULIP-2 PointBERT pretrained checkpoint (relative to project root)
+    pretrained_encoder_path: str = "pretrained/ULIP-2/pretrained_models/ULIP-2-PointBERT-8k-xyz-pc-slip_vit_b-objaverse-pretrained.pt"
 
 
 class PointLLMForTrees:
@@ -35,9 +37,14 @@ class PointLLMForTrees:
     PointLLM主模型（无训练版）
     提供点云编码 + token化 + 描述生成
     不做LLM微调，直接调用GLM API
+
+    支持两种encoder模式：
+    - pretrained: 使用ULIP-2 PointBERT（推荐，从Objaverse预训练）
+    - random: 使用随机初始化的TreePointEncoder
     """
 
-    def __init__(self, config: Optional[PointLLMConfig] = None, device: str = "auto"):
+    def __init__(self, config: Optional[PointLLMConfig] = None, device: str = "auto",
+                 use_pretrained: bool = True):
         if config is None:
             config = PointLLMConfig()
         self.config = config
@@ -46,11 +53,46 @@ class PointLLMForTrees:
             device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = torch.device(device)
 
-        # 三个组件
-        self.encoder = TreePointEncoder(
-            input_dim=config.input_dim,
-            global_dim=config.encoder_dim,
-        ).to(self.device)
+        # 选择编码器：优先使用预训练的ULIP-2 PointBERT
+        if use_pretrained:
+            try:
+                import os as _os
+                from pathlib import Path as _P
+                # Resolve checkpoint path relative to project root (3 levels up from this file)
+                project_root = _P(__file__).parent.parent.parent
+                ckpt_path = project_root / config.pretrained_encoder_path
+                if ckpt_path.exists():
+                    from .pretrained_encoder import PretrainedPointEncoder
+                    self.encoder = PretrainedPointEncoder(
+                        checkpoint_path=str(ckpt_path),
+                        load_pretrained=True,
+                    ).to(self.device)
+                    self.encoder.eval()
+                    self._encoder_type = "ulip2_pointbert"
+                    print(f"[PointLLMForTrees] Using pretrained ULIP-2 PointBERT encoder")
+                else:
+                    print(f"[PointLLMForTrees] Pretrained checkpoint not found at {ckpt_path}, falling back to random encoder")
+                    self._encoder_type = "random"
+                    self.encoder = TreePointEncoder(
+                        input_dim=config.input_dim,
+                        global_dim=config.encoder_dim,
+                    ).to(self.device)
+                    self.encoder.eval()
+            except Exception as e:
+                print(f"[PointLLMForTrees] Failed to load pretrained encoder: {e}, using random encoder")
+                self._encoder_type = "random"
+                self.encoder = TreePointEncoder(
+                    input_dim=config.input_dim,
+                    global_dim=config.encoder_dim,
+                ).to(self.device)
+                self.encoder.eval()
+        else:
+            self._encoder_type = "random"
+            self.encoder = TreePointEncoder(
+                input_dim=config.input_dim,
+                global_dim=config.encoder_dim,
+            ).to(self.device)
+            self.encoder.eval()
 
         self.tokenizer = TreePointTokenizer(
             input_dim=config.encoder_dim,
@@ -66,9 +108,6 @@ class PointLLMForTrees:
         ).to(self.device)
 
         self.desc_gen = TreeDescriptionGenerator()
-        self.encoder.eval()
-        self.tokenizer.eval()
-        self.projector.eval()
         self.tokenizer.eval()
         self.projector.eval()
 
@@ -86,12 +125,66 @@ class PointLLMForTrees:
         enc_out = self.encoder(pts_tensor)
         global_feat = enc_out["global_feature"]   # (1, encoder_dim)
 
-        # Tokenizer VQ
-        # up_features from encoder is (1, N, 512), use that
+        if self._encoder_type == "ulip2_pointbert":
+            # 预训练encoder: 768-dim global feature + trans_feature
+            analysis = self._encode_pretrained(pts_tensor, enc_out)
+        else:
+            # 随机encoder: 使用up_features进行VQ
+            analysis = self._encode_random(pts_tensor, enc_out)
+
+        return analysis
+
+    def _encode_pretrained(self, pts_tensor: torch.Tensor, enc_out: Dict) -> Dict:
+        """使用预训练ULIP-2 PointBERT编码器"""
+        global_feat = enc_out["global_feature"]    # (1, 768)
+        trans_feat = enc_out["trans_feature"]      # (1, 513, 384)
+
+        z = pts_tensor[0, :, 2].cpu().numpy()
+
+        # 预训练特征统计
+        cls_token = trans_feat[0, 0]               # (384,)
+        group_tokens = trans_feat[0, 1:]           # (512, 384)
+        feat_norm = global_feat[0].norm().item()
+        cls_norm = cls_token.norm().item()
+        group_std = group_tokens.std().item()
+        group_mean = group_tokens.mean().item()
+
+        # VQ量化: 将768维global_feat投影到tokenizer的input_dim (512)，再展开到per-point
+        proj_768_to_512 = nn.Linear(768, self.config.encoder_dim, device=self.device)
+        projected_global = proj_768_to_512(global_feat)  # (1, 512)
+        # 展开到per-point特征用于VQ
+        feat_for_vq = projected_global.unsqueeze(1).expand(-1, pts_tensor.shape[1], -1)  # (1, N, 512)
+        quantized, info = self.tokenizer(feat_for_vq)
+
+        analysis = {
+            "geometry": {
+                "n_points": int(pts_tensor.shape[1]),
+                "z_min": float(z.min()),
+                "z_max": float(z.max()),
+                "height": float(z.max() - z.min()),
+                "centroid": pts_tensor[0].mean(axis=0).cpu().numpy().tolist(),
+            },
+            "tokens": {
+                "unique_tokens": int(info["perplexity"].cpu().item()),
+                "total_tokens": int(pts_tensor.shape[1]),
+                "token_indices": info["token_indices"].cpu().numpy().tolist(),
+                "vq_loss": float(info["vq_loss"].cpu().item()),
+            },
+            "pretrained_features": {
+                "global_norm": feat_norm,
+                "cls_token_norm": cls_norm,
+                "group_std": group_std,
+                "group_mean": group_mean,
+                "encoder_type": "ULIP-2 PointBERT (pretrained on Objaverse)",
+            },
+        }
+        return analysis
+
+    def _encode_random(self, pts_tensor: torch.Tensor, enc_out: Dict) -> Dict:
+        """使用随机初始化的TreePointEncoder"""
         up_feats = enc_out["up_features"]          # (1, N, encoder_dim)
         quantized, info = self.tokenizer(up_feats)  # (1, N, token_dim)
 
-        # 几何分析
         z = pts_tensor[0, :, 2].cpu().numpy()
         analysis = {
             "geometry": {

@@ -12,7 +12,7 @@ project_root = str(Path(__file__).parent.parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -72,6 +72,9 @@ tokenizer_service: Optional[TokenizerService] = None
 @app.on_event("startup")
 async def startup():
     global trees_service, tokenizer_service
+    # Ensure API key is available (fallback to hardcoded for development)
+    if not os.environ.get("ZHIPUAI_API_KEY") and not os.environ.get("GLM_API_KEY"):
+        os.environ.setdefault("ZHIPUAI_API_KEY", "32871b74afe147af83edfe74281edaaf.EyDpmMOAPjS85vJI")
     trees_service = TreesService()
     tokenizer_service = TokenizerService()
 
@@ -88,29 +91,31 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
+
+
 @app.post("/extract", response_model=TreeParamsResponse)
 async def extract_tree_params(file: UploadFile = File(...)):
     """
-    上传点云文件，提取单棵树参数
-    支持 .las, .laz, .npy 格式
+    上传点云文件，LLM直接推理树木参数
+    不使用规则引擎，让GLM从PointLLM token分布中推理树高/DBH/冠幅
     """
-    if not trees_service:
-        raise HTTPException(status_code=503, detail="Service not initialized")
+    if not tokenizer_service:
+        raise HTTPException(status_code=503, detail="TokenizerService not initialized")
 
     try:
-        # 保存上传文件
         suffix = os.path.splitext(file.filename)[1]
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
 
-        # 处理
-        result = await trees_service.extract_params(tmp_path)
+        # 让LLM从token分布直接推理参数（无规则引擎）
+        result = tokenizer_service.extract_params_llm(tmp_path)
 
-        # 清理
         os.unlink(tmp_path)
-
         return result
 
     except Exception as e:
@@ -281,7 +286,7 @@ async def encode_and_chat(request: QuestionRequest):
             request.point_cloud_path,
             request.question,
         )
-        return {"answer": result["answer"], "n_voxels": result["n_voxels"]}
+        return {"answer": result["answer"], "n_points": result["n_points"], "token_info": result.get("token_info", "")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -326,7 +331,7 @@ async def encode_chat_upload(file: UploadFile = File(...), question: str = Form(
 
         result = tokenizer_service.tokenize_and_chat(tmp_path, question)
         os.unlink(tmp_path)
-        return {"answer": result["answer"], "n_voxels": result["n_voxels"]}
+        return {"answer": result["answer"], "n_points": result["n_points"], "token_info": result.get("token_info", "")}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
