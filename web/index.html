@@ -568,6 +568,32 @@
         }
         .point-popup .popup-title { font-size: 0.65rem; color: rgba(255,255,255,0.5); margin-bottom: 2px; }
         .point-popup .popup-coord { color: #a8d5a2; }
+        .popup-tree-info {
+            margin-top: 6px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 5px;
+        }
+        .popup-tree-info .popup-param {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            font-size: 0.68rem;
+            line-height: 1.7;
+            color: rgba(255,255,255,0.8);
+        }
+        .popup-tree-info .popup-param span:first-child { color: rgba(255,255,255,0.5); }
+        .popup-ask-btn {
+            margin-top: 6px;
+            width: 100%;
+            padding: 5px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 0.7rem;
+            cursor: pointer;
+        }
+        .popup-ask-btn:hover { background: var(--primary-dark); }
 
         /* Ground/Tree legend */
         .legend-bar {
@@ -712,8 +738,16 @@
                     <div class="coord-row"><span>Z</span><span id="camZ">--</span></div>
                 </div>
                 <div class="point-popup" id="pointPopup">
-                    <div class="popup-title">Point Coordinate</div>
+                    <div class="popup-title" id="popupTitle">Point Coordinate</div>
                     <div class="popup-coord" id="popupCoord">--</div>
+                    <div class="popup-tree-info" id="popupTreeInfo" style="display:none">
+                        <div class="popup-param"><span>树高</span><span id="popupHeight">-</span></div>
+                        <div class="popup-param"><span>胸径</span><span id="popupDbh">-</span></div>
+                        <div class="popup-param"><span>冠幅</span><span id="popupCrown">-</span></div>
+                        <div class="popup-param"><span>碳储量</span><span id="popupCarbon">-</span></div>
+                        <div class="popup-param"><span>碳汇价值</span><span id="popupCarbonValue" style="color:#5dd9c1">-</span></div>
+                        <button class="popup-ask-btn" id="popupAskBtn" onclick="askAboutSelectedTree()">询问这棵树</button>
+                    </div>
                 </div>
                 <div class="legend-bar" id="legendBar">
                     <div class="legend-item"><span class="legend-dot" style="background:#8B7355"></span>地面点</div>
@@ -1041,6 +1075,7 @@
                         points: pts.length / 3,
                         groundCount,
                         treeCount,
+                        trees_params: result.trees_params || (result.params ? [{ ...result.params, tree_id: 'tree_0' }] : []),
                     };
 
                     // Camera fit
@@ -1145,9 +1180,51 @@
             // Camera position is updated in animate() loop
         }
 
+        let clickedTreeParams = null;
+
+        function findTreeAtPoint(px, py, pz) {
+            // Search all cloud layers for the tree whose bbox contains this point
+            for (const cl of Object.values(cloudLayers)) {
+                if (!cl.trees_params || cl.trees_params.length === 0) continue;
+                for (const tree of cl.trees_params) {
+                    const b = tree.bbox;
+                    if (!b) continue;
+                    const margin = 0.05;
+                    if (px >= b.x_min - margin && px <= b.x_max + margin &&
+                        py >= b.y_min - margin && py <= b.y_max + margin &&
+                        pz >= b.z_min - margin && pz <= b.z_max + margin) {
+                        return tree;
+                    }
+                }
+                // Fallback: find nearest tree center
+                if (cl.trees_params.length > 0) {
+                    let best = null, bestDist = Infinity;
+                    for (const tree of cl.trees_params) {
+                        const c = tree.center_xy;
+                        if (!c) continue;
+                        const d = (px - c[0])**2 + (py - c[1])**2;
+                        if (d < bestDist) { bestDist = d; best = tree; }
+                    }
+                    if (best && bestDist < 1.0) return best;
+                }
+            }
+            return null;
+        }
+
+        function askAboutSelectedTree() {
+            if (!clickedTreeParams) return;
+            const t = clickedTreeParams;
+            const question = `请分析 ${t.tree_id || '这棵树'}：树高${t.height}m，胸径${t.dbh}cm，冠幅${t.crown_width}m，碳储量${t.carbon_stock}kg（价值¥${t.carbon_value}）`;
+            const popup = document.getElementById('pointPopup');
+            popup.style.display = 'none';
+            document.getElementById('chatInput').value = question;
+            sendMessage();
+        }
+
         function setupClickTracking() {
             const canvas = document.getElementById('threeCanvas');
             const raycaster = new THREE.Raycaster();
+            raycaster.params.Points.threshold = 0.02;
             const mouse = new THREE.Vector2();
             const popup = document.getElementById('pointPopup');
 
@@ -1163,10 +1240,29 @@
                 if (hits.length > 0) {
                     const p = hits[0].point;
                     document.getElementById('popupCoord').textContent = `X: ${p.x.toFixed(3)}  Y: ${p.y.toFixed(3)}  Z: ${p.z.toFixed(3)}`;
+
+                    const tree = findTreeAtPoint(p.x, p.y, p.z);
+                    const treeInfo = document.getElementById('popupTreeInfo');
+                    if (tree) {
+                        clickedTreeParams = tree;
+                        document.getElementById('popupTitle').textContent = tree.tree_id || '树木信息';
+                        document.getElementById('popupHeight').textContent = `${tree.height} m`;
+                        document.getElementById('popupDbh').textContent = `${tree.dbh} cm`;
+                        document.getElementById('popupCrown').textContent = `${tree.crown_width} m`;
+                        document.getElementById('popupCarbon').textContent = `${tree.carbon_stock} kg`;
+                        document.getElementById('popupCarbonValue').textContent = `¥${tree.carbon_value}`;
+                        treeInfo.style.display = 'block';
+                    } else {
+                        clickedTreeParams = null;
+                        document.getElementById('popupTitle').textContent = 'Point Coordinate';
+                        treeInfo.style.display = 'none';
+                    }
+
                     popup.style.display = 'block';
-                    popup.style.left = (e.clientX - rect.left + 10) + 'px';
+                    popup.style.left = Math.min(e.clientX - rect.left + 10, rect.width - 200) + 'px';
                     popup.style.top = (e.clientY - rect.top - 40) + 'px';
-                    setTimeout(() => { popup.style.display = 'none'; }, 3000);
+                    clearTimeout(popup._timer);
+                    popup._timer = setTimeout(() => { popup.style.display = 'none'; }, 6000);
                 }
             });
         }
@@ -1298,7 +1394,7 @@
                         <div class="param-item"><span class="param-label">树高</span><span class="param-value">${t.params?.height ?? '-'} m</span></div>
                         <div class="param-item"><span class="param-label">胸径</span><span class="param-value">${t.params?.dbh ?? '-'} cm</span></div>
                         <div class="param-item"><span class="param-label">冠幅</span><span class="param-value">${t.params?.crown_width ?? '-'} m</span></div>
-                        <div class="param-item"><span class="param-label">碳储量</span><span class="param-value">${t.params?.carbon_stock ?? '-'} kg</span></div>
+                        <div class="param-item"><span class="param-label">碳储量</span><span class="param-value">${t.params?.carbon_stock ?? '-'} kg<span style="color:#5dd9c1;font-size:0.7em"> · ¥${((t.params?.carbon_stock || 0) * 0.08).toFixed(2)}</span></span></div>
                     </div>
                 </div>
             `).join('');
@@ -1368,9 +1464,12 @@
             bar.style.display = 'flex';
             const totalPoints = trees.reduce((s, t) => s + (t.n_points || 0), 0);
             const totalCarbon = trees.reduce((s, t) => s + (t.params?.carbon_stock || 0), 0);
+            const totalCarbonValue = (totalCarbon * 0.08).toFixed(2);
             document.getElementById('statPoints').textContent = totalPoints > 0 ? totalPoints.toLocaleString() : '-';
             document.getElementById('statTrees').textContent = trees.length;
-            document.getElementById('statCarbon').textContent = totalCarbon > 0 ? totalCarbon.toFixed(1) + ' kg' : '-';
+            document.getElementById('statCarbon').textContent = totalCarbon > 0
+                ? `${totalCarbon.toFixed(1)} kg | ¥${totalCarbonValue}`
+                : '-';
         }
 
         // ===================== CHAT =====================
@@ -1637,6 +1736,7 @@
         window.removeLayer = removeLayer;
         window.toggleLayerSection = toggleLayerSection;
         window.askQuestion = askQuestion;
+        window.askAboutSelectedTree = askAboutSelectedTree;
         window.generateReport = generateReport;
     </script>
 </body>

@@ -125,6 +125,9 @@ def extract_precise_params(points: np.ndarray) -> Dict[str, Any]:
     # 碳储量估算
     carbon = height * (dbh / 100) ** 2 * 0.5 * 700
 
+    # 碳汇价值估算（¥80/吨 ≈ ¥0.08/kg）
+    carbon_value = round(float(carbon) * 0.08, 2)
+
     return {
         "height": round(float(height), 2),
         "dbh": round(float(dbh), 1),
@@ -132,6 +135,16 @@ def extract_precise_params(points: np.ndarray) -> Dict[str, Any]:
         "crown_volume": round(float(crown_volume), 2),
         "stem_volume": round(float(stem_volume), 3),
         "carbon_stock": round(float(carbon), 1),
+        "carbon_value": carbon_value,
+        "bbox": {
+            "x_min": round(float(x.min()), 3),
+            "x_max": round(float(x.max()), 3),
+            "y_min": round(float(y.min()), 3),
+            "y_max": round(float(y.max()), 3),
+            "z_min": round(z_min, 3),
+            "z_max": round(z_max, 3),
+        },
+        "center_xy": [round(float(x.mean()), 3), round(float(y.mean()), 3)],
     }
 
 
