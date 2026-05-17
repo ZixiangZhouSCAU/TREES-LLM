@@ -425,10 +425,25 @@ class TreeAnalysisService:
                 cached = self.cache.get(keys[-1])
 
         if not cached:
+            # 无缓存：纯对话模式
+            intent = classify_intent(question)
+            intent_desc = get_intent_description(intent)
+            try:
+                answer = self.decision_engine.answer_question(
+                    question=question,
+                    trees_params=[],
+                    scene_stats={},
+                    intent=intent.value,
+                )
+            except Exception as e:
+                answer = f"暂时无法回答，请稍后再试。"
             return {
-                "success": False,
-                "answer": "请先上传点云进行分析。",
-                "error": "no_cached_data",
+                "success": True,
+                "answer": str(answer),
+                "intent": str(intent.value),
+                "intent_description": str(intent_desc),
+                "scene_stats": {},
+                "trees_count": 0,
             }
 
         # 意图分类
@@ -472,7 +487,14 @@ class TreeAnalysisService:
                 cached = self.cache.get(keys[-1])
 
         if not cached:
-            yield "请先上传点云进行分析。"
+            # 无缓存：纯对话模式（不依赖点云数据）
+            for token in self.decision_engine.stream_answer(
+                question=question,
+                trees_params=[],
+                scene_stats={},
+                intent="general",
+            ):
+                yield token
             return
 
         intent = classify_intent(question)

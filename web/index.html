@@ -749,7 +749,7 @@
                     <img class="avatar" src="/web/avatar.png" alt="AI">
                     <div class="msg-body">
                         <div class="msg-label">GLM-4 林业专家</div>
-                        您好！我是您的智能树木分析助手。上传点云并分析后，我可以帮您分析树木健康状况、估算碳储量、解读生长特征。
+                        您好！我是您的智能树木分析助手。您可以随时向我咨询林业、点云分析、碳汇计算等问题，也可以上传点云文件进行专业分析。
                     </div>
                 </div>
             </div>
@@ -1414,10 +1414,6 @@
             addMessage('user', text);
 
             const files = pendingFiles;
-            if (!files.length) {
-                addMessage('assistant', '请先上传点云文件。', true);
-                return;
-            }
 
             // If data already loaded in cache, use streaming endpoint
             if (treeData && Object.keys(cloudLayers).length > 0) {
@@ -1439,30 +1435,29 @@
                 return;
             }
 
-            // First time: upload file to /analyze (populates cache for subsequent streaming)
-            try {
-                const formData = new FormData();
-                formData.append('file', files[0]);
-                formData.append('question', text);
+            // Has file but not yet analyzed: upload + analyze (populates cache)
+            if (files.length > 0) {
+                try {
+                    const formData = new FormData();
+                    formData.append('file', files[0]);
+                    formData.append('question', text);
 
-                const response = await fetch(`${API_BASE}/analyze`, {
-                    method: 'POST',
-                    body: formData,
-                });
+                    const response = await fetch(`${API_BASE}/analyze`, {
+                        method: 'POST',
+                        body: formData,
+                    });
 
-                if (!response.ok) {
-                    const err = await response.json().catch(() => ({}));
-                    throw new Error(err.detail || `HTTP ${response.status}`);
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.detail || `HTTP ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    addMessage('assistant', result.answer || '（无回复）');
+                    treeData = result;
+                } catch (err) {
+                    addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
                 }
-
-                const result = await response.json();
-                addMessage('assistant', result.answer || '（无回复）');
-
-                // Mark data as loaded so next question uses streaming
-                treeData = result;
-            } catch (err) {
-                addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
-            }
         }
 
         async function renderStream(response) {

@@ -300,11 +300,14 @@ def get_scene_description(scene_stats: Dict) -> str:
     根据场景统计量生成场景描述（用于发送给LLM）
 
     Args:
-        scene_stats: 场景统计量字典
+        scene_stats: 场景统计量字典（空字典表示纯对话模式）
 
     Returns:
         str: 场景描述文本
     """
+    if not scene_stats or (len(scene_stats) == 0 and scene_stats.get('total_trees') is None):
+        return "## 场景信息\n暂无点云数据。当前为纯对话模式，您可以询问任何关于林业、树木测量、森林管理、碳汇计算等方面的问题。"
+
     total_trees = scene_stats.get("total_trees", 1)
     avg_height = scene_stats.get("avg_height", 0)
     avg_dbh = scene_stats.get("avg_dbh", 0)
