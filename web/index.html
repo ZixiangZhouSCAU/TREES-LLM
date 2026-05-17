@@ -1378,6 +1378,27 @@
                 return;
             }
 
+            // If data already loaded in cache, use streaming endpoint
+            if (treeData && Object.keys(cloudLayers).length > 0) {
+                try {
+                    const formData = new FormData();
+                    formData.append('question', text);
+                    const response = await fetch(`${API_BASE}/ask/stream`, {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    if (!response.ok) {
+                        const err = await response.json().catch(() => ({}));
+                        throw new Error(err.detail || `HTTP ${response.status}`);
+                    }
+                    await renderStream(response, text);
+                } catch (err) {
+                    addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
+                }
+                return;
+            }
+
+            // First time: upload file to /analyze (populates cache for subsequent streaming)
             try {
                 const formData = new FormData();
                 formData.append('file', files[0]);
@@ -1395,8 +1416,51 @@
 
                 const result = await response.json();
                 addMessage('assistant', result.answer || '（无回复）');
+
+                // Mark data as loaded so next question uses streaming
+                treeData = result;
             } catch (err) {
                 addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
+            }
+        }
+
+        async function renderStream(response) {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'msg assistant';
+            msgDiv.innerHTML = `<div class="msg-label">GLM-4 林业专家</div><div class="msg-content"></div>`;
+            document.getElementById('chatMessages').appendChild(msgDiv);
+            msgDiv.scrollIntoView({ behavior: 'smooth' });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            const contentEl = msgDiv.querySelector('.msg-content');
+            let buffer = '';
+            let rawText = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6).trim();
+                        if (data === '[DONE]' || data.startsWith('[ERROR]')) continue;
+                        rawText += data;
+                        contentEl.textContent = rawText + '█';
+                        msgDiv.scrollIntoView({ behavior: 'smooth' });
+                    }
+                }
+            }
+
+            contentEl.textContent = rawText;
+            const marked = window._marked;
+            if (marked && typeof marked.parse === 'function') {
+                contentEl.innerHTML = marked.parse(rawText);
+            } else {
+                contentEl.innerHTML = rawText.replace(/\n/g, '<br>');
             }
         }
 
@@ -1406,15 +1470,11 @@
             if (!text) return;
 
             input.value = text;
-            if (treeData && Object.keys(cloudLayers).length > 0) {
-                // Use /ask/stream endpoint with cached analysis (streaming)
-                addMessage('user', text);
-                const msgDiv = document.createElement('div');
-                msgDiv.className = 'msg assistant';
-                msgDiv.innerHTML = `<div class="msg-label">GLM-4 林业专家</div><div class="msg-content streaming">AI思考中...</div>`;
-                document.getElementById('chatMessages').appendChild(msgDiv);
-                msgDiv.scrollIntoView({ behavior: 'smooth' });
+            const hasLoadedData = treeData && Object.keys(cloudLayers).length > 0;
 
+            if (hasLoadedData) {
+                // Already analyzed: use streaming /ask/stream endpoint
+                addMessage('user', text);
                 try {
                     const formData = new FormData();
                     formData.append('question', text);
@@ -1422,93 +1482,16 @@
                         method: 'POST',
                         body: formData,
                     });
-
                     if (!response.ok) {
                         const err = await response.json().catch(() => ({}));
                         throw new Error(err.detail || `HTTP ${response.status}`);
                     }
-
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    const contentEl = msgDiv.querySelector('.msg-content');
-
-                    // Hide "AI思考中..." indicator once first token arrives
-                    let firstToken = false;
-
-                    while (true) {
-                        const { done, value } = await reader.read();
-                        if (done) break;
-                        buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || '';
-
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                const data = line.slice(6).trim();
-                                if (data === '[DONE]' || data.startsWith('[ERROR]')) continue;
-                                if (!firstToken) {
-                                    contentEl.textContent = '';
-                                    firstToken = true;
-                                }
-                                contentEl.textContent += data;
-                                msgDiv.scrollIntoView({ behavior: 'smooth' });
-                            }
-                        }
-                    }
-
-                    // Final render with markdown
-                    const marked = window._marked;
-                    const raw = contentEl.textContent;
-                    if (marked && typeof marked.parse === 'function') {
-                        contentEl.innerHTML = marked.parse(raw);
-                    } else {
-                        contentEl.innerHTML = raw.replace(/\n/g, '<br>');
-                    }
+                    await renderStream(response);
                 } catch (err) {
-                    msgDiv.querySelector('.msg-content').innerHTML = `<span style="color:#e74c3c">请求失败: ${err.message}</span>`;
+                    addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
                 }
             } else {
-                // Fall back to /analyze with file + question (streaming)
-                addMessage('user', text);
-                const msgDiv = document.createElement('div');
-                msgDiv.className = 'msg assistant';
-                msgDiv.innerHTML = `<div class="msg-label">GLM-4 林业专家</div><div class="msg-content streaming">AI思考中...</div>`;
-                document.getElementById('chatMessages').appendChild(msgDiv);
-
-                const files = pendingFiles;
-                if (!files.length) {
-                    msgDiv.querySelector('.msg-content').textContent = '请先上传点云文件。';
-                    return;
-                }
-
-                try {
-                    const formData = new FormData();
-                    formData.append('file', files[0]);
-                    formData.append('question', text);
-                    const response = await fetch(`${API_BASE}/analyze`, {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    if (!response.ok) {
-                        const err = await response.json().catch(() => ({}));
-                        throw new Error(err.detail || `HTTP ${response.status}`);
-                    }
-
-                    const result = await response.json();
-                    const marked = window._marked;
-                    const raw = result.answer || '（无回复）';
-                    const contentEl = msgDiv.querySelector('.msg-content');
-                    if (marked && typeof marked.parse === 'function') {
-                        contentEl.innerHTML = marked.parse(raw);
-                    } else {
-                        contentEl.innerHTML = raw.replace(/\n/g, '<br>');
-                    }
-                    msgDiv.scrollIntoView({ behavior: 'smooth' });
-                } catch (err) {
-                    msgDiv.querySelector('.msg-content').innerHTML = `<span style="color:#e74c3c">请求失败: ${err.message}</span>`;
-                }
+                sendMessage();
             }
         }
 
