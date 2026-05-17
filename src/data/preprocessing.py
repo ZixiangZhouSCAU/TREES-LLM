@@ -1,6 +1,8 @@
 """
-点云预处理模块
-包含地面点滤除、离群点去除、树木分割等功能
+点云预处理模块（已弃用）
+⚠️ DEPRECATED: 本模块不再被任何活跃端点使用，仅保留历史参考。
+当前数据流：PointLLM.encode() → VQ tokenizer → token文本化 → GLM
+本模块的 ground filter / clustering / 几何参数计算已不再在关键路径中。
 """
 
 import numpy as np

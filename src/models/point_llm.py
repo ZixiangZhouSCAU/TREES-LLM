@@ -15,7 +15,6 @@ from typing import Dict, Optional, Tuple
 
 from .point_encoder import TreePointEncoder
 from .tokenizer import TreePointTokenizer
-from .llm_projector import LLMProjector, TreeDescriptionGenerator
 
 
 class PointLLMConfig:
@@ -24,8 +23,6 @@ class PointLLMConfig:
     encoder_dim: int = 512
     token_dim: int = 128
     num_tokens: int = 2048
-    llm_dim: int = 4096
-    num_queries: int = 256
     commitment_cost: float = 0.25
     input_dim: int = 3
     # Path to ULIP-2 PointBERT pretrained checkpoint (relative to project root)
@@ -101,15 +98,7 @@ class PointLLMForTrees:
             commitment_cost=config.commitment_cost,
         ).to(self.device)
 
-        self.projector = LLMProjector(
-            token_dim=config.token_dim,
-            llm_dim=config.llm_dim,
-            num_queries=config.num_queries,
-        ).to(self.device)
-
-        self.desc_gen = TreeDescriptionGenerator()
         self.tokenizer.eval()
-        self.projector.eval()
 
     def encode(self, points: np.ndarray) -> Dict:
         """
@@ -203,9 +192,22 @@ class PointLLMForTrees:
         }
         return analysis
 
+    def _desc_from_analysis(self, analysis: dict) -> str:
+        """从分析结果生成文本描述"""
+        geom = analysis.get("geometry", {})
+        layers = analysis.get("layers", {})
+        lines = [
+            f"点数: {geom.get('n_points', 0)}",
+            f"高度: {geom.get('height', 0):.3f} m",
+            f"高度范围: {geom.get('z_min', 0):.3f} ~ {geom.get('z_max', 0):.3f} m",
+        ]
+        for name, ratio in layers.items():
+            lines.append(f"{name}: {ratio:.1f}%")
+        return ", ".join(lines)
+
     def build_prompt(self, analysis: dict, question: str) -> str:
         """构建发送给GLM的prompt"""
-        description = self.desc_gen.from_analysis(analysis)
+        description = self._desc_from_analysis(analysis)
 
         prompt = f"""你是一位资深林业专家，擅长分析LiDAR点云数据。
 你收到了PointLLM树木点云分析结果，包含：
@@ -270,7 +272,7 @@ class PointLLMForTrees:
         return analysis
 
     def to_description(self, analysis: dict) -> str:
-        return self.desc_gen.from_analysis(analysis)
+        return self._desc_from_analysis(analysis)
 
 
 def test_pointllm():

@@ -1,7 +1,7 @@
 # TREES-LLM — Claude Code Project Configuration
 
 > Project context loaded on every session start. Update this file when research direction or folder structure changes.
-> **Last updated:** 2026-05-16
+> **Last updated:** 2026-05-16 (架构重构后)
 
 ---
 
@@ -12,7 +12,7 @@
 **Core:** PointLLM (ECCV 2024) route — Web platform where users upload MLS point clouds and a LLM directly understands 3D scenes to segment trees, extract parameters (DBH, height, crown, volume), answer questions, and generate reports.
 **Stage:** Development (PointLLM skeleton complete, integration testing)
 
-**Tech route:** PointNet++ Encoder → VQ-VAE Tokenizer → LLM Projector → GLM-4-Flash (cloud API, zero training)
+**Tech route:** ULIP-2 PointBERT Encoder → VQ-VAE Tokenizer → token文本化 → GLM-4-Flash (cloud API, zero training)
 
 ---
 
@@ -56,9 +56,8 @@ When input is rejected (bad file type, missing field, invalid parameter), log it
 
 | Layer | Tech |
 |-------|------|
-| Point cloud encoder | PointNet++ (Set Abstraction + Feature Propagation), `src/models/point_encoder.py` |
+| Point cloud encoder | ULIP-2 PointBERT (Objaverse pretrained, 768-dim), fallback: TreePointEncoder |
 | Tokenizer | VQ-VAE, 2048-codebook, 128-dim embeddings, `src/models/tokenizer.py` |
-| LLM projector | Linear + LayerNorm + GELU, 128→4096 dim, `src/models/llm_projector.py` |
 | Language model | GLM-4-Flash via `zhipuai` SDK (智谱AI cloud API) |
 | Backend | FastAPI + uvicorn |
 | Frontend | Three.js (ES modules via importmap), vanilla HTML/JS |
@@ -72,13 +71,17 @@ When input is rejected (bad file type, missing field, invalid parameter), log it
 ```
 python src/api/main.py   # → http://localhost:8000
 
-GET  /                  health check, version info
-GET  /web               serve web frontend
-POST /extract          upload point cloud → rule-based parameter extraction
-POST /pointllm          upload point cloud → PointLLM encode → GLM analyze
-POST /chat              text-only question → GLM
-POST /report            multi-tree → survey report via GLM
-POST /encode-chat-upload  upload → PointLLM encode → GLM Q&A (main pipeline)
+GET  /                health check, version info
+GET  /web             serve web frontend
+GET  /health          health check
+POST /analyze         upload point cloud + question → 精确参数 + LLM语义回答 (核心端点)
+POST /multi-analyze   多树分割分析 (DBSCAN + 逐树参数)
+POST /ask             自然语言问答 (基于缓存, 非流式)
+POST /ask/stream      自然语言问答 (SSE流式输出)
+POST /report          完整调查报告 (standard/detailed/carbon)
+POST /recommend-params 自动参数推荐
+GET  /cache-status    缓存状态
+DELETE /cache         清空缓存
 ```
 
 ---
@@ -86,7 +89,7 @@ POST /encode-chat-upload  upload → PointLLM encode → GLM Q&A (main pipeline)
 ## Known Quirks
 
 ### Torch import chain
-`src/models/point_llm.py` imports `point_encoder.py` → `tokenizer.py` → `llm_projector.py`. All import torch. **Never** put these imports at the top of `src/api/*.py` — use lazy import inside endpoint functions to avoid blocking the server when torch is unavailable. Pattern:
+`src/models/point_llm.py` imports `point_encoder.py` → `tokenizer.py`. Both import torch. **Never** put these imports at the top of `src/api/*.py` — use lazy import inside endpoint functions to avoid blocking the server when torch is unavailable. Pattern:
 ```python
 def endpoint():
     # lazy — don't put at module top
@@ -117,17 +120,23 @@ H:\1reserch\03TREES-LLM\
 ├── web/                      Web frontend (Three.js + chat)
 │   └── index.html
 ├── src/
-│   ├── models/               PointLLM core (PointNet++ encoder, VQ-VAE, projector)
-│   │   ├── point_encoder.py
-│   │   ├── tokenizer.py
-│   │   ├── llm_projector.py
-│   │   └── point_llm.py
+│   ├── models/               PointLLM core
+│   │   ├── pretrained_encoder.py  ULIP-2 PointBERT (768-dim)
+│   │   ├── tokenizer.py           VQ-VAE (2048 codebook)
+│   │   ├── point_encoder.py      fallback encoder
+│   │   └── point_llm.py          统一封装 (encoder + tokenizer)
 │   ├── api/                  FastAPI endpoints
-│   │   ├── main.py
-│   │   ├── services.py
-│   │   └── tokenizer_service.py
+│   │   ├── main.py            路由（含流式SSE端点）
+│   │   ├── service.py         唯一业务服务（统一入口）
+│   │   ├── schemas.py         Pydantic模型（边界校验）
+│   │   ├── cache.py           分析结果缓存（LRU, 线程安全）
+│   │   ├── intent.py          意图分类器（10种意图）
+│   │   ├── decision_engine.py 决策推理引擎（报告+问答）
+│   │   ├── interpreters.py    树木参数语义解读
+│   │   └── parameter_advisor.py 参数自动推荐
 │   ├── data/
-│   │   └── preprocessing.py  Ground filter, clustering, param extraction
+│   │   ├── preprocessing.py  ⚠️ DEPRECATED
+│   │   └── forest_knowledge.py 林业知识库（林分类型+管理规则+生物量公式）
 │   └── scripts/
 │       ├── inference.py
 │       └── eval_metrics.py
@@ -145,11 +154,8 @@ H:\1reserch\03TREES-LLM\
 
 ```bash
 # Start backend
-set ZHIPUAI_API_KEY=<key>
+set ZHIPUAI_API_KEY=32871b74afe147af83edfe74281edaaf.EyDpmMOAPjS85vJI
 python src/api/main.py
-
-# Test data
-python -c "from src.data.preprocessing import compute_tree_params; import numpy as np; pts = np.load('path/to.npy'); print(compute_tree_params(pts))"
 
 # Web frontend test
 curl http://localhost:8000/web
@@ -168,3 +174,5 @@ taskkill /F /FI "WINDOWTITLE eq *python*8000*" 2>nul
 | 2026-04-27 | Project initialized |
 | 2026-05-12 | Integrated scheme A/B into scheme C, built full code scaffold |
 | 2026-05-16 | **Major refactor**: switched from 3DCity-LLM to PointLLM route, deleted old models, rebuilt core modules, fixed PLY binary parser, integrated karpathy-skills |
+| 2026-05-16 | **架构重构v2**: 合并双Service为TreeAnalysisService，删除7个冗余端点，删除llm_projector.py，删除tokenizer_service.py/services.py，标记preprocessing.py为DEPRECATED，更新CLAUDE.md |
+| 2026-05-17 | **LLM语义层+流式输出**: 新增intent/cache/decision_engine/interpreters/parameter_advisor/forest_knowledge模块，修复height_range序列化bug，添加SSE流式问答(/ask/stream)，前端流式渲染 |
