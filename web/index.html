@@ -314,6 +314,40 @@
             border-radius: 12px;
             font-size: 0.88rem;
             line-height: 1.5;
+            display: flex;
+            gap: 8px;
+            align-items: flex-start;
+        }
+
+        .msg .avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 2px;
+            object-fit: cover;
+        }
+
+        .msg.user .avatar {
+            order: 1;
+        }
+
+        .msg.assistant .avatar {
+            margin-right: 2px;
+        }
+
+        .msg.user .avatar {
+            margin-left: 2px;
+        }
+
+        .msg .msg-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .msg.user .msg-body {
+            text-align: right;
+        }
         }
 
         .msg.user {
@@ -712,8 +746,11 @@
             </div>
             <div class="chat-messages" id="chatMessages">
                 <div class="msg assistant">
-                    <div class="msg-label">GLM-4 林业专家</div>
-                    您好！我是您的智能树木分析助手。上传点云并分析后，我可以帮您分析树木健康状况、估算碳储量、解读生长特征。
+                    <img class="avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%231a2e1a' stroke='%232d7d46' stroke-width='3'/%3E%3Cpath d='M50 72 L50 38' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M38 48 L50 32 L62 48' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M42 42 L50 30 L58 42' fill='none' stroke='%235dd9c1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='30' y1='55' x2='70' y2='55' stroke='%235dd9c1' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3C/svg%3E" alt="AI">
+                    <div class="msg-body">
+                        <div class="msg-label">GLM-4 林业专家</div>
+                        您好！我是您的智能树木分析助手。上传点云并分析后，我可以帮您分析树木健康状况、估算碳储量、解读生长特征。
+                    </div>
                 </div>
             </div>
             <div class="chat-input-area">
@@ -1343,15 +1380,19 @@
             if (window._marked.setOptions) window._marked.setOptions({ breaks: true, gfm: true });
         }).catch(() => { window._marked = null; });
 
+        const AI_AVATAR = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%231a2e1a' stroke='%232d7d46' stroke-width='3'/%3E%3Cpath d='M50 72 L50 38' stroke='white' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M38 48 L50 32 L62 48' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M42 42 L50 30 L58 42' fill='none' stroke='%235dd9c1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='30' y1='55' x2='70' y2='55' stroke='%235dd9c1' stroke-width='1.5' stroke-dasharray='4 3'/%3E%3C/svg%3E`;
+        const USER_AVATAR = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%232d7d46'/%3E%3Ccircle cx='50' cy='38' r='14' fill='white'/%3E%3Cellipse cx='50' cy='72' rx='22' ry='16' fill='white'/%3E%3C/svg%3E`;
+
         function addMessage(role, content, isError = false) {
             const container = document.getElementById('chatMessages');
             const div = document.createElement('div');
             div.className = `msg ${role}${isError ? ' error' : ''}`;
+            const avatar = role === 'assistant' ? AI_AVATAR : USER_AVATAR;
             if (role === 'assistant') {
                 const htmlContent = (window._marked && typeof window._marked.parse === 'function') ? window._marked.parse(content) : content.replace(/\n/g, '<br>');
-                div.innerHTML = `<div class="msg-label">GLM-4 林业专家</div><div class="msg-content">${htmlContent}</div>`;
+                div.innerHTML = `<img class="avatar" src="${avatar}" alt="AI"><div class="msg-body"><div class="msg-label">GLM-4 林业专家</div><div class="msg-content">${htmlContent}</div></div>`;
             } else {
-                div.textContent = content;
+                div.innerHTML = `<div class="msg-body">${content}</div><img class="avatar" src="${avatar}" alt="用户">`;
             }
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
@@ -1427,7 +1468,7 @@
         async function renderStream(response) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'msg assistant';
-            msgDiv.innerHTML = `<div class="msg-label">GLM-4 林业专家</div><div class="msg-content"></div>`;
+            msgDiv.innerHTML = `<img class="avatar" src="${AI_AVATAR}" alt="AI"><div class="msg-body"><div class="msg-label">GLM-4 林业专家</div><div class="msg-content"></div></div>`;
             document.getElementById('chatMessages').appendChild(msgDiv);
             msgDiv.scrollIntoView({ behavior: 'smooth' });
 
