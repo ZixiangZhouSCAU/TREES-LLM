@@ -1458,6 +1458,25 @@
                 } catch (err) {
                     addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
                 }
+                return;
+            }
+
+            // No file: pure chat mode via /ask/stream
+            try {
+                const formData = new FormData();
+                formData.append('question', text);
+                const response = await fetch(`${API_BASE}/ask/stream`, {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || `HTTP ${response.status}`);
+                }
+                await renderStream(response, text);
+            } catch (err) {
+                addMessage('assistant', `请求失败: ${err.message}。请确保后端服务正在运行。`, true);
+            }
         }
 
         async function renderStream(response) {
