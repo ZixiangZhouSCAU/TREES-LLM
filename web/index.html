@@ -53,7 +53,7 @@
         }
 
         header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.5px; }
-        header .subtitle { font-size: 0.8rem; opacity: 0.8; }
+        
 
         .main-container {
             display: flex;
@@ -661,11 +661,11 @@
 </head>
 <body>
     <header>
-        <div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <img src="/web/avatar.png" alt="Logo" style="width:32px;height:32px;border-radius:50%;">
             <h1>TREES-LLM 树木智能分析平台</h1>
-            <div class="subtitle">LiDAR点云 · 参数提取 · GLM智能问答</div>
         </div>
-        <div style="font-size:0.8rem; opacity:0.7;">多模态森林感知系统 v0.2</div>
+        <div style="font-size:0.8rem; opacity:0.7;">v0.3</div>
     </header>
 
     <div class="main-container">
@@ -766,8 +766,8 @@
 
         <div class="right-panel">
             <div class="chat-header">
-                <span class="ai-label">GLM-4 智能问答</span>
-                <span class="ai-badge">GLM-4-Flash</span>
+                <span class="ai-label">AI 智能问答</span>
+                <span class="ai-badge">LLM</span>
                 <button class="report-btn" id="reportBtn" onclick="generateReport()" disabled>生成报告</button>
             </div>
             <div class="quick-chips" id="quickChips">
@@ -782,7 +782,7 @@
                 <div class="msg assistant">
                     <img class="avatar" src="/web/avatar.png" alt="AI">
                     <div class="msg-body">
-                        <div class="msg-label">GLM-4 林业专家</div>
+                        <div class="msg-label">AI 林业专家</div>
                         您好！我是您的智能树木分析助手。您可以随时向我咨询林业、点云分析、碳汇计算等问题，也可以上传点云文件进行专业分析。
                     </div>
                 </div>
@@ -1489,7 +1489,7 @@
             const avatar = role === 'assistant' ? AI_AVATAR : USER_AVATAR;
             if (role === 'assistant') {
                 const htmlContent = (window._marked && typeof window._marked.parse === 'function') ? window._marked.parse(content) : content.replace(/\n/g, '<br>');
-                div.innerHTML = `<img class="avatar" src="${avatar}" alt="AI"><div class="msg-body"><div class="msg-label">GLM-4 林业专家</div><div class="msg-content">${htmlContent}</div></div>`;
+                div.innerHTML = `<img class="avatar" src="${avatar}" alt="AI"><div class="msg-body"><div class="msg-label">AI 林业专家</div><div class="msg-content">${htmlContent}</div></div>`;
             } else {
                 div.innerHTML = `<div class="msg-body">${content}</div><img class="avatar" src="${avatar}" alt="用户">`;
             }
@@ -1581,7 +1581,7 @@
         async function renderStream(response) {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'msg assistant';
-            msgDiv.innerHTML = `<img class="avatar" src="${AI_AVATAR}" alt="AI"><div class="msg-body"><div class="msg-label">GLM-4 林业专家</div><div class="msg-content"></div></div>`;
+            msgDiv.innerHTML = `<img class="avatar" src="${AI_AVATAR}" alt="AI"><div class="msg-body"><div class="msg-label">AI 林业专家</div><div class="msg-content"></div></div>`;
             document.getElementById('chatMessages').appendChild(msgDiv);
             msgDiv.scrollIntoView({ behavior: 'smooth' });
 
