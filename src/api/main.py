@@ -94,6 +94,15 @@ async def health_check():
     }
 
 
+@app.get("/web/{filename}")
+async def serve_web_file(filename: str):
+    """Serve static files from web directory"""
+    file_path = os.path.join(project_root, "web", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return JSONResponse({"error": "Not found"}, status_code=404)
+
+
 @app.get("/web")
 async def serve_web():
     web_path = os.path.join(project_root, "web", "index.html")
