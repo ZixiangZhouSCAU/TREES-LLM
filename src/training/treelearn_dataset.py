@@ -1,19 +1,26 @@
 """
 TreeLearn TLS 森林点云数据集加载器
-https://github.com/Weizheng-NY/TreeLearn
+https://github.com/ecker-lab/TreeLearn
 
 支持：
-  - PLY 格式（含 semantic + instance 标签）
+  - .laz / .las 格式（TreeLearn 官方格式，Lidar360 标注）
+  - PLY 格式（含 semantic + instance 标签，第三方格式）
   - 训练时随机裁剪 / 数据增强
   - 语义分割（3类）+ 实例分割标签
 
-标签说明（TreeLearn）：
+LAZ/LAS 标签说明（Lidar360）：
+  classification:
+    2 = ground   地面
+    3 = trunk    树干（TLS 主干）
+    4 = crown    树冠
+  treeID: 每棵树的唯一ID（0 = ground，不属于任何树）
+
+PLY 标签说明（第三方格式）：
   semantic:
     0 = ground   地面
     1 = trunk    树干
     2 = crown    树冠
-    3 = other    其他（辅助类别）
-
+    3 = other    其他
   instance_id: 每棵树的唯一ID（0 = ground，不属于任何树）
 """
 
@@ -24,6 +31,82 @@ from torch.utils.data import Dataset
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
 import random
+
+
+def parse_npy_with_labels(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    解析预处理的 NPY 文件（由 preprocess_treelearn.py 生成）
+
+    NPY 格式: (N, 5) float32 array
+      col 0-2: xyz coordinates
+      col 3: semantic label (0=ground, 1=trunk, 2=crown)
+      col 4: instance ID (treeID)
+
+    Returns:
+        points: (N, 3) xyz
+        semantic: (N,) int64
+        instance: (N,) int64
+    """
+    arr = np.load(filepath, allow_pickle=False)
+    points = arr[:, :3].astype(np.float32)
+    semantic = arr[:, 3].astype(np.int64)
+    instance = arr[:, 4].astype(np.int64)
+    return points, semantic, instance
+
+
+def parse_las_with_labels(filepath: str, max_points: int = 200000) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    解析 LAZ/LAS 文件（TreeLearn 官方 Lidar360 标注格式）
+    对大文件做在线降采样，控制内存占用
+
+    Lidar360 标签映射：
+      classification:
+        2 = ground  (地面)
+        3 = trunk   (树干)
+        4 = crown  (树冠)
+      treeID: 每棵树唯一ID（0 = ground，不属于任何树）
+
+    Returns:
+        points: (N, 3) xyz 坐标（已降采样到 max_points）
+        semantic: (N,) 语义标签 0=ground 1=trunk 2=crown
+        instance: (N,) 实例标签（每棵树唯一ID）
+    """
+    try:
+        import laspy
+    except ImportError:
+        raise ImportError("laspy required for LAZ/LAS files: pip install laspy")
+
+    las = laspy.read(filepath)
+    x = np.array(las.x, dtype=np.float32)
+    y = np.array(las.y, dtype=np.float32)
+    z = np.array(las.z, dtype=np.float32)
+    n_total = len(x)
+
+    # 大文件在线降采样：随机采样 max_points 个点
+    if n_total > max_points:
+        idx = np.random.RandomState().choice(n_total, max_points, replace=False)
+        x, y, z = x[idx], y[idx], z[idx]
+        cls_raw = np.array(las.classification, dtype=np.int32)[idx]
+        try:
+            instance = np.array(las.treeID, dtype=np.int64)[idx]
+        except Exception:
+            instance = np.zeros(max_points, dtype=np.int64)
+    else:
+        cls_raw = np.array(las.classification, dtype=np.int32)
+        try:
+            instance = np.array(las.treeID, dtype=np.int64)
+        except Exception:
+            instance = np.zeros(n_total, dtype=np.int64)
+
+    points = np.stack([x, y, z], axis=1)
+
+    # Lidar360 → 标准语义标签
+    mapping = {2: 0, 3: 1, 4: 2}
+    semantic = np.zeros(len(cls_raw), dtype=np.int64)
+    for orig, new in mapping.items():
+        semantic[cls_raw == orig] = new
+
+    return points, semantic, instance
 
 
 def parse_ply_with_labels(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -158,7 +241,7 @@ class TreeLearnDataset(Dataset):
         num_points: int = 8192,
         use_augmentation: bool = True,
         transform_mode: str = "semantic",  # "semantic" | "instance" | "both"
-        cache_in_memory: bool = True,
+        cache_in_memory: bool = False,
     ):
         self.root = Path(root)
         self.split = split
@@ -175,24 +258,29 @@ class TreeLearnDataset(Dataset):
         self._cache: Dict[int, Tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
     def _load_file_list(self):
-        """扫描 root 目录下的所有 PLY 文件"""
+        """扫描 root 目录下的所有 .npy / .laz / .las / .ply 文件"""
         if not self.root.exists():
             raise FileNotFoundError(f"TreeLearn root not found: {self.root}")
 
+        # NPY 优先（预处理过的，加载最快）
+        npy_files = sorted(self.root.rglob("*.npy"))
+        laz_files = sorted(self.root.rglob("*.laz"))
+        las_files = sorted(self.root.rglob("*.las"))
         ply_files = sorted(self.root.rglob("*.ply"))
-        if not ply_files:
-            raise FileNotFoundError(f"No .ply files found in {self.root}")
 
-        for ply_file in ply_files:
-            self.samples.append({
-                "path": str(ply_file),
-                "name": ply_file.stem,
-            })
+        for f in npy_files:
+            self.samples.append({"path": str(f), "name": f.stem, "fmt": "npy"})
+        for f in laz_files + las_files:
+            if not any(s["name"] == f.stem for s in self.samples):
+                self.samples.append({"path": str(f), "name": f.stem, "fmt": "las"})
+        for f in ply_files:
+            if not any(s["name"] == f.stem for s in self.samples):
+                self.samples.append({"path": str(f), "name": f.stem, "fmt": "ply"})
 
-        print(f"[TreeLearnDataset] Found {len(self.samples)} PLY files in {self.root}")
+        print(f"[TreeLearnDataset] Found {len(self.samples)} point cloud files in {self.root}")
 
     def _load_sample(self, idx: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """加载单个 PLY 样本"""
+        """加载单个样本（支持 NPY / LAZ/LAS / PLY 格式）"""
         if self.cache_in_memory and idx in self._cache:
             return self._cache[idx]
 
@@ -200,7 +288,13 @@ class TreeLearnDataset(Dataset):
         path = sample["path"]
 
         try:
-            points, semantic, instance = parse_ply_with_labels(path)
+            fmt = sample.get("fmt", "")
+            if fmt == "npy":
+                points, semantic, instance = parse_npy_with_labels(path)
+            elif fmt == "las":
+                points, semantic, instance = parse_las_with_labels(path)
+            else:
+                points, semantic, instance = parse_ply_with_labels(path)
         except Exception as e:
             print(f"[TreeLearnDataset] Failed to parse {path}: {e}")
             points = np.zeros((100, 3), dtype=np.float32)
@@ -293,8 +387,10 @@ class TreeLearnDataset(Dataset):
         if self.use_augmentation:
             points = self._augment(points)
 
-        # 标签映射：ground=0, trunk=1, crown=2, other→3
-        # TreeLearn 原始标签：0=ground, 1=trunk, 2=crown, 3=other（已是目标格式）
+        # 标签映射：
+        #   TreeLearn 自动标注数据只有 ground(0) 和 crown(2)，没有 trunk
+        #   将 crown(2) 映射为 tree(1)，用于 2 类分割（ground vs tree）
+        semantic[semantic == 2] = 1
 
         result = {
             "points": torch.from_numpy(points.astype(np.float32)),          # (N, 3)
@@ -318,7 +414,7 @@ def test_dataset():
     """快速测试"""
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=str, default="data/TreeLearn")
+    parser.add_argument("--root", type=str, default="data/TreeLearn/data/train/forests")
     args = parser.parse_args()
 
     try:
@@ -338,8 +434,8 @@ def test_dataset():
         print("[OK] TreeLearnDataset test passed")
     except FileNotFoundError as e:
         print(f"[SKIP] TreeLearn dataset not found: {e}")
-        print("Download from: https://github.com/Weizheng-NY/TreeLearn")
-        print("Place in: data/TreeLearn/")
+        print("Download from: https://github.com/ecker-lab/TreeLearn")
+        print("Place .laz files in: data/TreeLearn/data/train/forests/")
 
 
 if __name__ == "__main__":

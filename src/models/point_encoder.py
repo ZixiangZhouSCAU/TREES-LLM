@@ -80,7 +80,10 @@ class PointNetSetAbstraction(nn.Module):
             dists[mask] = dist[mask]
             farthest = torch.max(dists, dim=1)[1]
 
-        return xyz[batch_indices, centroids, :]
+        # Batch-aware gather: offset each batch's indices
+        idx_flat = centroids + torch.arange(B, device=device).view(B, 1) * N
+        xyz_flat = xyz.reshape(B * N, 3)
+        return xyz_flat[idx_flat.reshape(-1)].reshape(B, npoint, 3)
 
     def _group_points(self, xyz: torch.Tensor, new_xyz: torch.Tensor,
                       radius: float, nsample: int) -> Tuple[torch.Tensor, torch.Tensor]:

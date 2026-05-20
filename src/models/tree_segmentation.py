@@ -126,7 +126,7 @@ class TreeSegmentationModel(nn.Module):
     输出：语义 logits + 实例特征
     """
 
-    SEMANTIC_CLASSES = ["ground", "trunk", "crown"]
+    SEMANTIC_CLASSES = ["ground", "tree"]
 
     def __init__(self, num_classes: int = 3, instance_feat_dim: int = 32):
         super().__init__()

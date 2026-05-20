@@ -173,7 +173,7 @@ def _get_segmentation_model():
                 import torch
                 from src.models.tree_segmentation import TreeSegmentationModel
                 device = "cuda" if torch.cuda.is_available() else "cpu"
-                model = TreeSegmentationModel(num_classes=4)
+                model = TreeSegmentationModel(num_classes=2)
                 state = torch.load(path, map_location=device, weights_only=False)
                 model.load_state_dict(state["model"])
                 model.to(device)
@@ -227,60 +227,59 @@ def _segment_with_model(
     eps: float,
     min_samples: int,
 ) -> List[np.ndarray]:
-    """PointNet++ 监督分割"""
+    """PointNet++ 监督分割（2类：ground=0, tree=1）
+
+    流程：
+      1. 模型预测 tree 点（preds==1）
+      2. tree 点做 DBSCAN(XY) → 每棵树实例
+      3. 以每个实例中心扩展完整树冠
+    """
     import torch
-    model.eval()  # 确保 BatchNorm 在 eval 模式
+    model.eval()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     points_tensor = torch.from_numpy(points.astype(np.float32)).unsqueeze(0).to(device)
 
     with torch.no_grad():
         out = model(points_tensor)
-        logits = out["semantic_logits"]           # (1, N, 3)
+        logits = out["semantic_logits"]           # (1, N, 2)
         preds = logits.argmax(dim=-1)[0].cpu().numpy()   # (N,)
 
-    # trunk 点（类别1）
-    trunk_mask = preds == 1
-    trunk_points = points[trunk_mask]
+    # tree 点（类别1）
+    tree_mask = preds == 1
+    tree_points = points[tree_mask]
 
-    if trunk_mask.sum() < min_samples:
-        # trunk 点太少，用全部点回退
+    if tree_mask.sum() < min_samples:
         return []
 
-    # trunk 点 DBSCAN 实例分割
+    # tree 点 DBSCAN 实例分割（XY 平面）
     try:
         from sklearn.cluster import DBSCAN
-        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(trunk_points[:, :2])
+        clustering = DBSCAN(eps=eps, min_samples=max(5, min_samples // 5)).fit(tree_points[:, :2])
         labels = clustering.labels_
     except Exception:
         return []
 
     # 构建每棵完整树
     trees = []
-    trunk_indices = np.where(trunk_mask)[0]
+    tree_indices = np.where(tree_mask)[0]
 
     for label in set(labels):
         if label < 0:
             continue
-        trunk_sub_indices = trunk_indices[labels == label == labels]
-        trunk_sub = trunk_points[labels == label]
+        cluster_mask = labels == label
+        cluster_pts = tree_points[cluster_mask]
 
-        if len(trunk_sub) < min_samples // 2:
+        if len(cluster_pts) < 3:
             continue
 
-        # 找种子点
-        cluster_center = trunk_sub[:, :2].mean(axis=0)
-        trunk_xy = points[trunk_indices, :2]
-        dists = np.sqrt(((trunk_xy - cluster_center) ** 2).sum(axis=1))
-        seed_idx = trunk_indices[dists.argmin()]
+        # 以 cluster 中心为种子，在原始点云中扩展完整树冠
+        center_xy = cluster_pts[:, :2].mean(axis=0)
+        radius = max(0.5, np.sqrt(((cluster_pts[:, :2] - center_xy) ** 2).sum(axis=1)).max() * 1.2)
 
-        # 以种子点为中心，xy 扩张 1.0m 范围内合并完整树冠
-        seed_xyz = points[seed_idx]
-        tree_mask = (
-            (np.abs(points[:, 0] - seed_xyz[0]) < 1.0) &
-            (np.abs(points[:, 1] - seed_xyz[1]) < 1.0)
-        )
-        full_tree = points[tree_mask]
+        # 在原始点云中取以 center_xy 为中心 radius 范围内的点
+        dists = np.sqrt(((points[:, :2] - center_xy) ** 2).sum(axis=1))
+        full_tree = points[dists < radius]
         if len(full_tree) > 50:
             trees.append(full_tree)
 

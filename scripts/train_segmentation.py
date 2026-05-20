@@ -44,8 +44,8 @@ from src.training.treelearn_dataset import TreeLearnDataset, collate_fn
 
 def get_args():
     parser = argparse.ArgumentParser(description="PointNet++ 单木分割训练")
-    parser.add_argument("--data-root", type=str, default="data/TreeLearn",
-                        help="TreeLearn 数据集根目录")
+    parser.add_argument("--data-root", type=str, default="data/TreeLearn/data/train/forests",
+                        help="TreeLearn 数据集根目录（含 .laz 文件）")
     parser.add_argument("--output-dir", type=str, default="outputs/segmentation",
                         help="输出目录")
     parser.add_argument("--checkpoint", type=str, default=None,
@@ -74,15 +74,14 @@ def get_args():
 class SegmentationLoss(nn.Module):
     """
     语义分割损失：带类别权重
-    trunk 点更重要（用于实例分割），给予更高权重
+    ground(0) vs tree(1) 二分类
     """
 
-    def __init__(self, num_classes: int = 4, ignore_label: int = -1):
+    def __init__(self, num_classes: int = 2, ignore_label: int = -1):
         super().__init__()
         self.num_classes = num_classes
         self.ignore_label = ignore_label
-        # 类别权重：trunk(1) 加权更高
-        self.register_buffer("weight", torch.tensor([1.0, 2.5, 1.5, 0.5]))
+        self.register_buffer("weight", torch.tensor([1.0, 1.5]))
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
@@ -120,7 +119,7 @@ def compute_iou(pred: np.ndarray, target: np.ndarray, num_classes: int = 4) -> d
     return ious
 
 
-def evaluate_model(model: nn.Module, val_loader: DataLoader, device: torch.device, num_classes: int = 4) -> dict:
+def evaluate_model(model: nn.Module, val_loader: DataLoader, device: torch.device, num_classes: int = 2) -> dict:
     """在验证集上评估"""
     model.eval()
     all_preds = []
@@ -254,8 +253,8 @@ def train(args):
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0)
 
-    # 模型
-    model = TreeSegmentationModel(num_classes=4).to(device)
+    # 模型（2类：ground vs tree）
+    model = TreeSegmentationModel(num_classes=2).to(device)
     print(f"[Model] Parameters: {model.num_params():,}")
 
     # 加载 checkpoint
@@ -271,7 +270,7 @@ def train(args):
     # 优化器 + 学习率调度
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
-    criterion = SegmentationLoss(num_classes=4)
+    criterion = SegmentationLoss(num_classes=2)
 
     # 训练循环
     print(f"[Train] Starting from epoch {start_epoch}, total {args.epochs}")
@@ -288,9 +287,7 @@ def train(args):
                   f"Acc: {metrics['accuracy']:.4f}, "
                   f"mIoU: {metrics['ious']['mean']:.4f}")
             print(f"  IoU: ground={metrics['ious'][0]:.3f}, "
-                  f"trunk={metrics['ious'][1]:.3f}, "
-                  f"crown={metrics['ious'][2]:.3f}, "
-                  f"other={metrics['ious'][3]:.3f}")
+                  f"tree={metrics['ious'][1]:.3f}")
 
             # 保存 best
             if metrics["val_loss"] < best_val_loss:
@@ -301,7 +298,7 @@ def train(args):
                     "epoch": epoch,
                     "best_val_loss": best_val_loss,
                     "config": {
-                        "num_classes": 4,
+                        "num_classes": 2,
                         "instance_feat_dim": 32,
                         "num_points": args.num_points,
                     }
@@ -329,7 +326,7 @@ def eval_model(args):
         print("[ERROR] --checkpoint required for eval mode")
         return
 
-    model = TreeSegmentationModel(num_classes=4).to(device)
+    model = TreeSegmentationModel(num_classes=2).to(device)
     state = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(state["model"])
     print(f"[Eval] Loaded: {args.checkpoint}")
@@ -342,15 +339,12 @@ def eval_model(args):
     dataset = TreeLearnDataset(args.data_root, split="train", num_points=args.num_points, use_augmentation=False)
     loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=collate_fn, num_workers=0)
 
-    metrics = evaluate_model(model, loader, device)
+    metrics = evaluate_model(model, loader, device, num_classes=2)
     print(f"\n[Eval Results]")
     print(f"Val Loss: {metrics['val_loss']:.4f}")
     print(f"Accuracy: {metrics['accuracy']:.4f}")
-    print(f"mIoU:     {metrics['ious']['mean']:.4f}")
     print(f"IoU ground:  {metrics['ious'][0]:.4f}")
-    print(f"IoU trunk:   {metrics['ious'][1]:.4f}")
-    print(f"IoU crown:   {metrics['ious'][2]:.4f}")
-    print(f"IoU other:   {metrics['ious'][3]:.4f}")
+    print(f"IoU tree:     {metrics['ious'][1]:.4f}")
 
 
 def demo_segmentation(args):
