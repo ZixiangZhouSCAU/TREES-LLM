@@ -150,11 +150,149 @@ def extract_precise_params(points: np.ndarray) -> Dict[str, Any]:
 
 # ============ 传统算法：单木分割 ============
 
-def segment_trees(points: np.ndarray, eps: float = 0.5, min_samples: int = 50) -> List[np.ndarray]:
+_SEG_MODEL = None  # 全局共享分割模型（延迟加载）
+
+
+def _get_segmentation_model():
     """
-    基于DBSCAN的空间聚类分割单木
-    这是传统算法的核心优势，LLM无法替代
+    获取分割模型（延迟加载，仅首次使用时加载）
+    优先使用 PointNet++ 监督模型，回退到纯 DBSCAN
     """
+    global _SEG_MODEL
+    if _SEG_MODEL is not None:
+        return _SEG_MODEL
+
+    model = None
+    default_paths = [
+        "outputs/best_segmentation_model.pt",
+        "outputs/segmentation/best_segmentation_model.pt",
+    ]
+    for path in default_paths:
+        if os.path.exists(path):
+            try:
+                import torch
+                from src.models.tree_segmentation import TreeSegmentationModel
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                model = TreeSegmentationModel(num_classes=4)
+                state = torch.load(path, map_location=device, weights_only=False)
+                model.load_state_dict(state["model"])
+                model.to(device)
+                model.eval()
+                print(f"[segment_trees] Loaded PointNet++ model from {path}")
+                _SEG_MODEL = model
+                return model
+            except Exception as e:
+                print(f"[segment_trees] Failed to load model from {path}: {e}")
+
+    if model is None:
+        print("[segment_trees] No trained model found, using pure DBSCAN fallback")
+    _SEG_MODEL = None
+    return None
+
+
+def segment_trees(
+    points: np.ndarray,
+    eps: float = 0.5,
+    min_samples: int = 50,
+) -> List[np.ndarray]:
+    """
+    单木分割：优先 PointNet++ 监督模型，回退到 DBSCAN
+
+    PointNet++ 流程（训练模型可用时）：
+      1. 语义分割 → trunk 点
+      2. trunk 点 DBSCAN → 每棵树
+      3. 合并完整树冠点
+
+    DBSCAN 回退（无模型）：
+      点云 → DBSCAN(XY) → 每类 = 一棵树
+    """
+    # 尝试使用 PointNet++ 模型
+    model = _get_segmentation_model()
+    if model is not None:
+        try:
+            trees = _segment_with_model(model, points, eps, min_samples)
+            if trees:
+                print(f"[segment_trees] PointNet++ detected {len(trees)} trees")
+                return trees
+        except Exception as e:
+            print(f"[segment_trees] PointNet++ segmentation failed: {e}")
+
+    # 回退到 DBSCAN
+    return _segment_with_dbscan(points, eps, min_samples)
+
+
+def _segment_with_model(
+    model,
+    points: np.ndarray,
+    eps: float,
+    min_samples: int,
+) -> List[np.ndarray]:
+    """PointNet++ 监督分割"""
+    import torch
+    model.eval()  # 确保 BatchNorm 在 eval 模式
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    points_tensor = torch.from_numpy(points.astype(np.float32)).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        out = model(points_tensor)
+        logits = out["semantic_logits"]           # (1, N, 3)
+        preds = logits.argmax(dim=-1)[0].cpu().numpy()   # (N,)
+
+    # trunk 点（类别1）
+    trunk_mask = preds == 1
+    trunk_points = points[trunk_mask]
+
+    if trunk_mask.sum() < min_samples:
+        # trunk 点太少，用全部点回退
+        return []
+
+    # trunk 点 DBSCAN 实例分割
+    try:
+        from sklearn.cluster import DBSCAN
+        clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(trunk_points[:, :2])
+        labels = clustering.labels_
+    except Exception:
+        return []
+
+    # 构建每棵完整树
+    trees = []
+    trunk_indices = np.where(trunk_mask)[0]
+
+    for label in set(labels):
+        if label < 0:
+            continue
+        trunk_sub_indices = trunk_indices[labels == label == labels]
+        trunk_sub = trunk_points[labels == label]
+
+        if len(trunk_sub) < min_samples // 2:
+            continue
+
+        # 找种子点
+        cluster_center = trunk_sub[:, :2].mean(axis=0)
+        trunk_xy = points[trunk_indices, :2]
+        dists = np.sqrt(((trunk_xy - cluster_center) ** 2).sum(axis=1))
+        seed_idx = trunk_indices[dists.argmin()]
+
+        # 以种子点为中心，xy 扩张 1.0m 范围内合并完整树冠
+        seed_xyz = points[seed_idx]
+        tree_mask = (
+            (np.abs(points[:, 0] - seed_xyz[0]) < 1.0) &
+            (np.abs(points[:, 1] - seed_xyz[1]) < 1.0)
+        )
+        full_tree = points[tree_mask]
+        if len(full_tree) > 50:
+            trees.append(full_tree)
+
+    return trees
+
+
+def _segment_with_dbscan(
+    points: np.ndarray,
+    eps: float,
+    min_samples: int,
+) -> List[np.ndarray]:
+    """纯 DBSCAN 分割（回退方案）"""
     try:
         from sklearn.cluster import DBSCAN
         clustering = DBSCAN(eps=eps, min_samples=min_samples).fit(points[:, :2])
@@ -167,7 +305,6 @@ def segment_trees(points: np.ndarray, eps: float = 0.5, min_samples: int = 50) -
                     tree_list.append(tree_points)
         return tree_list
     except ImportError:
-        # 如果没有sklearn，返回整个点云作为单棵树
         return [points] if len(points) > 100 else []
 
 

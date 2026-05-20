@@ -22,6 +22,7 @@ env/
 *.ckpt
 *.pkl
 checkpoints/
+outputs/
 
 # Data (large files)
 *.ply
@@ -40,6 +41,7 @@ node_modules/
 .idea/
 *.swp
 *.swo
+.claude/
 
 # OS
 .DS_Store

@@ -17,18 +17,90 @@ from src.data.forest_knowledge import (
 
 class DecisionEngine:
     """
-    林业决策推理引擎
+    林业决策推理引擎（v0.4 — 三层编码 + RAG）
 
     功能：
     - 接收精确参数 + 语义理解 → 输出可执行决策建议
     - 生成完整的调查报告
     - 提供多场景决策支持
+    - RAG 知识库检索增强
+    - 三层编码器指令路由（Object/Relationship/Scene）
     """
 
     def __init__(self, llm_client=None):
         self.llm_client = llm_client
         self.interpreter = TreeParameterInterpreter(llm_client)
         self.advisor = ParameterAdvisor(llm_client)
+
+        # RAG 系统（惰性初始化）
+        self._rag = None
+        self._rag_available = False
+
+    def init_rag(self):
+        """初始化 RAG 系统（延迟加载，避免阻塞服务器启动）"""
+        if self._rag is not None:
+            return
+        try:
+            from src.api.rag import get_rag_system
+            self._rag = get_rag_system()
+            self._rag_available = True
+            print("[DecisionEngine] RAG system initialized")
+        except Exception as e:
+            print(f"[DecisionEngine] RAG not available: {e}")
+            self._rag_available = False
+
+    def answer_with_rag(
+        self,
+        question: str,
+        trees_params: List[Dict],
+        scene_stats: Dict,
+        intent: str,
+    ) -> str:
+        """
+        使用 RAG 检索增强回答问题（优先级高于普通 answer_question）
+
+        Args:
+            question: 用户问题
+            trees_params: 树木参数列表
+            scene_stats: 场景统计
+            intent: 意图类型
+
+        Returns:
+            str: 自然语言回答
+        """
+        if self._rag is None:
+            self.init_rag()
+
+        if not self._rag_available or self._rag is None:
+            return self.answer_question(question, trees_params, scene_stats, intent)
+
+        try:
+            prompts = self._rag.build_rag_prompt(
+                question=question,
+                trees_params=trees_params,
+                scene_stats=scene_stats,
+                intent=intent,
+            )
+        except Exception as e:
+            print(f"[DecisionEngine] RAG prompt build failed: {e}, fallback to normal")
+            return self.answer_question(question, trees_params, scene_stats, intent)
+
+        if not self.llm_client:
+            return self._template_answer(question, trees_params, scene_stats, intent)
+
+        try:
+            resp = self.llm_client.chat.completions.create(
+                model="glm-4-flash",
+                messages=[
+                    {"role": "system", "content": prompts["system"]},
+                    {"role": "user", "content": prompts["user"]},
+                ],
+                max_tokens=2048,
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            print(f"[DecisionEngine] RAG LLM answer failed: {e}")
+            return self.answer_question(question, trees_params, scene_stats, intent)
 
     def generate_report(
         self,

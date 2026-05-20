@@ -94,6 +94,27 @@ async def health_check():
     }
 
 
+@app.get("/rag-status")
+async def rag_status():
+    """查看 RAG 知识库状态"""
+    from src.api.rag import get_rag_system
+    try:
+        rag = get_rag_system()
+        stats = rag.get_stats()
+        return {
+            "status": "available" if stats["index_built"] else "not_built",
+            "total_chunks": stats["total_chunks"],
+            "embedding_model": stats["embedding_model"],
+            "knowledge_dir": stats["knowledge_dir"],
+            "index_dir": stats.get("index_dir", ""),
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+        }
+
+
 @app.get("/web/{filename}")
 async def serve_web_file(filename: str):
     """Serve static files from web directory"""

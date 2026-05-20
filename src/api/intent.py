@@ -19,7 +19,32 @@ class Intent(str, Enum):
     MANAGEMENT_SUGGEST = "management_suggest"  # 管理建议
     COMPARE_TREES = "compare_trees"  # 树木对比
     SCENE_UNDERSTAND = "scene_understand"  # 场景理解
+    RELATIONSHIP_QUERY = "relationship_query"  # 邻树关系查询
     GENERAL = "general"           # 通用问答
+
+
+# 三层编码路由映射（3DCITY-LLM 指令驱动路由）
+INTENT_TO_LAYER = {
+    # Scene 层：需要林分级全局分析
+    Intent.SCENE_UNDERSTAND: "scene",
+    Intent.MANAGEMENT_SUGGEST: "scene",
+    Intent.CARBON_ASSESS: "scene",
+    Intent.ANALYZE: "scene",
+    Intent.GENERATE_REPORT: "scene",
+    # Relationship 层：需要树间关系
+    Intent.COMPARE_TREES: "relationship",
+    Intent.RISK_CHECK: "relationship",
+    Intent.RELATIONSHIP_QUERY: "relationship",
+    # Object 层：单树快速查询
+    Intent.ASK_PARAMS: "object",
+    Intent.HEALTH_CHECK: "object",
+    Intent.GENERAL: "object",
+}
+
+
+def route_to_encoding_layer(intent: Intent) -> str:
+    """根据意图路由到对应的三层编码分支"""
+    return INTENT_TO_LAYER.get(intent, "object")
 
 
 # 意图关键词映射

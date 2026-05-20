@@ -1,28 +1,50 @@
-# TREES-LLM 快速推理配置
+# TREES-LLM 推理配置 (v0.4)
 
 model:
-  # tokenizer路径（训练好后指定）
-  tokenizer_path: "./outputs/baseline/tokenizer_best.pt"
-  # LLM基座
-  base_model: "meta-llama/Meta-Llama-3-8B-Instruct"
-  # 投影层路径
-  projection_path: "./outputs/baseline/projection_best.pt"
+  # 点云编码器
+  encoder: "ULIP-2 PointBERT (Objaverse pretrained, 768-dim)"
+  encoder_path: "pretrained/ULIP-2/pretrained_models/ULIP-2-PointBERT-8k-xyz-pc-slip_vit_b-objaverse-pretrained.pt"
+
+  # 三层编码器（Route A 架构对齐）
+  tree_encoder: "src/models/tree_encoder.py"
+  object_proj: "outputs/best_model.pt"       # Stage 1 训练后指定
+  relationship_proj: "outputs/best_model.pt"
+  scene_proj: "outputs/best_model.pt"
+
+  # VQ-VAE tokenizer
+  tokenizer:
+    codebook_size: 2048
+    embedding_dim: 128
+    commitment_cost: 0.25
+
+  # LLM API
+  llm:
+    provider: "zhipuai"          # zhipuai (GLM-4-Flash)
+    model: "glm-4-flash"
+    api_key_env: "ZHIPUAI_API_KEY"
 
 # 输入配置
 input:
   num_points: 4096
   normalize: true
   use_rgb: false
+  supported_formats: [".ply", ".pcd", ".las", ".laz", ".npy"]
 
 # 推理配置
 inference:
-  max_new_tokens: 256
+  max_new_tokens: 2048
   temperature: 0.7
   top_p: 0.9
-  do_sample: true
 
-# LLM API配置（可选）
-llm_api:
-  provider: "claude"   # "claude" | "openai" | "local"
-  model: "claude-3-5-sonnet"
-  api_key: "${CLAUDE_API_KEY}"
+# RAG 配置
+rag:
+  knowledge_dir: "resources/knowledge"
+  index_dir: "data/knowledge_index"
+  embedding_model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  top_k: 3
+
+# 三层编码器路由
+encoding_routes:
+  scene: ["scene_understand", "management_suggest", "carbon_assess", "analyze", "generate_report"]
+  relationship: ["compare_trees", "risk_check", "relationship_query"]
+  object: ["ask_params", "health_check", "general"]

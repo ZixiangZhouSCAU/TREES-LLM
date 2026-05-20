@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>TREES-LLM 树木智能分析平台</title>
     <style>
         :root {
@@ -20,31 +20,36 @@
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
+        html {
+            font-size: 16px;
+            height: 100%;
+        }
+
         body {
             font-family: 'Segoe UI', system-ui, sans-serif;
             background: var(--bg);
             color: var(--text);
-            height: 100vh;
+            height: 100%;
             display: flex;
             flex-direction: column;
             overflow: hidden;
         }
 
         @media (max-width: 1200px) {
-            .left-panel { width: 280px; }
-            .right-panel { width: 300px; }
+            .left-panel { flex: 0 0 22vw; min-width: 220px; }
+            .right-panel { flex: 0 0 24vw; min-width: 240px; }
         }
         @media (max-width: 900px) {
             .main-container { flex-direction: column; overflow-y: auto; }
-            .left-panel { width: 100%; max-height: 300px; border-right: none; border-bottom: 1px solid var(--border); }
+            .left-panel { flex: 0 0 auto; max-height: 300px; border-right: none; border-bottom: 1px solid var(--border); }
             .viewer-container { height: 400px; flex: none; }
-            .right-panel { width: 100%; height: 350px; border-left: none; border-top: 1px solid var(--border); }
+            .right-panel { flex: 0 0 auto; height: 350px; border-left: none; border-top: 1px solid var(--border); }
         }
 
         header {
             background: linear-gradient(135deg, var(--primary-dark), var(--primary));
             color: white;
-            padding: 14px 24px;
+            padding: 0.7rem 1.2rem;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -52,23 +57,26 @@
             flex-shrink: 0;
         }
 
-        header h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: -0.5px; }
-        
+        header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.5px; white-space: nowrap; }
 
         .main-container {
             display: flex;
             flex: 1;
             overflow: hidden;
             min-height: 0;
+            min-width: 0;
         }
 
         .left-panel {
-            width: 340px;
+            flex: 0 0 20vw;
+            min-width: 220px;
+            max-width: 340px;
             background: var(--surface);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-width: 0;
         }
 
         .panel-section {
@@ -175,27 +183,31 @@
             flex-direction: column;
             background: #0a1210;
             position: relative;
+            overflow: hidden;
+            min-width: 0;
         }
 
         #canvas-container {
             flex: 1;
             position: relative;
+            overflow: hidden;
+            min-width: 0;
         }
 
         canvas { display: block; width: 100%; height: 100%; }
 
         .viewer-toolbar {
             position: absolute;
-            top: 12px;
-            right: 12px;
+            top: 0.6rem;
+            right: 0.6rem;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 0.3rem;
         }
 
         .toolbar-btn {
-            width: 36px;
-            height: 36px;
+            width: 2rem;
+            height: 2rem;
             border-radius: 8px;
             border: none;
             background: rgba(255,255,255,0.9);
@@ -268,12 +280,15 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .right-panel {
-            width: 360px;
+            flex: 0 0 22vw;
+            min-width: 280px;
+            max-width: 400px;
             background: var(--surface);
             border-left: 1px solid var(--border);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-width: 0;
         }
 
         .chat-header {
@@ -336,10 +351,6 @@
             margin-right: 2px;
         }
 
-        .msg.user .avatar {
-            margin-left: 2px;
-        }
-
         .msg .msg-body {
             flex: 1;
             min-width: 0;
@@ -347,7 +358,6 @@
 
         .msg.user .msg-body {
             text-align: right;
-        }
         }
 
         .msg.user {
@@ -526,17 +536,17 @@
         /* Coordinate Display */
         .coord-panel {
             position: absolute;
-            bottom: 12px;
-            right: 12px;
+            bottom: 0.6rem;
+            right: 0.6rem;
             background: rgba(0,0,0,0.65);
             backdrop-filter: blur(6px);
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 8px;
-            padding: 8px 12px;
+            padding: 0.4rem 0.6rem;
             font-size: 0.75rem;
             color: rgba(255,255,255,0.85);
             font-family: 'Consolas', monospace;
-            min-width: 180px;
+            min-width: 160px;
             z-index: 5;
         }
         .coord-title {
@@ -565,6 +575,7 @@
             pointer-events: none;
             z-index: 20;
             display: none;
+            max-width: 220px;
         }
         .point-popup .popup-title { font-size: 0.65rem; color: rgba(255,255,255,0.5); margin-bottom: 2px; }
         .point-popup .popup-coord { color: #a8d5a2; }
@@ -598,17 +609,18 @@
         /* Ground/Tree legend */
         .legend-bar {
             position: absolute;
-            top: 12px;
-            left: 12px;
+            top: 0.6rem;
+            left: 0.6rem;
             background: rgba(0,0,0,0.65);
             backdrop-filter: blur(6px);
             border: 1px solid rgba(255,255,255,0.12);
             border-radius: 8px;
-            padding: 8px 12px;
+            padding: 0.4rem 0.6rem;
             font-size: 0.72rem;
             color: rgba(255,255,255,0.85);
             z-index: 5;
             display: none;
+            max-width: 50%;
         }
         .legend-item { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
         .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
@@ -661,11 +673,11 @@
 </head>
 <body>
     <header>
-        <div style="display:flex;align-items:center;gap:12px;">
-            <img src="/web/avatar.png" alt="Logo" style="width:32px;height:32px;border-radius:50%;">
+        <div style="display:flex;align-items:center;gap:0.6rem;min-width:0;">
+            <img src="/web/avatar.png" alt="Logo" style="width:2rem;height:2rem;border-radius:50%;flex-shrink:0;">
             <h1>TREES-LLM 树木智能分析平台</h1>
         </div>
-        <div style="font-size:0.8rem; opacity:0.7;">v0.3</div>
+        <div style="font-size:0.78rem;opacity:0.7;flex-shrink:0;">v0.3</div>
     </header>
 
     <div class="main-container">
@@ -876,13 +888,22 @@
 
         function onResize() {
             const container = document.getElementById('canvas-container');
+            if (!container) return;
             const w = container.clientWidth;
             const h = container.clientHeight;
+            if (w === 0 || h === 0) return;
             camera.aspect = w / h;
             camera.updateProjectionMatrix();
             renderer.setSize(w, h);
         }
 
+        // Use ResizeObserver to catch zoom / layout changes, not just window resize
+        const resizeObserver = new ResizeObserver(() => { onResize(); });
+        // Defer until container exists
+        window.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('canvas-container');
+            if (container) resizeObserver.observe(container);
+        });
         window.addEventListener('resize', onResize);
 
         function resetCamera() {
@@ -1259,8 +1280,10 @@
                     }
 
                     popup.style.display = 'block';
-                    popup.style.left = Math.min(e.clientX - rect.left + 10, rect.width - 200) + 'px';
-                    popup.style.top = (e.clientY - rect.top - 40) + 'px';
+                    const maxLeft = rect.width - 230;
+                    const maxTop = rect.height - 180;
+                    popup.style.left = Math.max(0, Math.min(e.clientX - rect.left + 10, maxLeft)) + 'px';
+                    popup.style.top = Math.max(0, Math.min(e.clientY - rect.top - 40, maxTop)) + 'px';
                     clearTimeout(popup._timer);
                     popup._timer = setTimeout(() => { popup.style.display = 'none'; }, 6000);
                 }
